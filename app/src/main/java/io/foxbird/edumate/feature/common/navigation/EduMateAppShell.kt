@@ -1,37 +1,27 @@
 package io.foxbird.edumate.feature.common.navigation
 
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.foxbird.edumate.R
 import io.foxbird.edumate.data.preferences.AppPreferences
 import io.foxbird.edumate.data.preferences.UserPreferencesManager
 import io.foxbird.edumate.feature.chat.ChatHistoryScreen
@@ -44,6 +34,8 @@ import io.foxbird.edumate.feature.onboarding.OnboardingScreen
 import io.foxbird.edumate.feature.settings.DevToolsScreen
 import io.foxbird.edumate.feature.settings.SettingsScreen
 import io.foxbird.edumate.feature.worksheet.WorksheetScreen
+import np.com.susanthapa.curved_bottom_navigation.CbnMenuItem
+import np.com.susanthapa.curved_bottom_navigation.CurvedBottomNavigationView
 import org.koin.compose.koinInject
 
 @Composable
@@ -65,72 +57,69 @@ fun EduMateAppShell() {
 
     val startDestination = if (prefs.onboardingComplete) NavRoutes.HOME else NavRoutes.ONBOARDING
 
+    val menuItems = arrayOf(
+        CbnMenuItem(R.drawable.ic_nav_home, R.drawable.avd_nav_home, title = "Home"),
+        CbnMenuItem(R.drawable.ic_nav_history, R.drawable.avd_nav_history, title = "History"),
+        CbnMenuItem(R.drawable.ic_nav_add, R.drawable.avd_nav_add, title = ""),
+        CbnMenuItem(R.drawable.ic_nav_library, R.drawable.avd_nav_library, title = "Library"),
+        CbnMenuItem(R.drawable.ic_nav_settings, R.drawable.avd_nav_settings, title = "Settings"),
+    )
+
     Scaffold(
         bottomBar = {
             if (isTopLevel) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp
-                ) {
-                    val items = topLevelDestinations
-                    val fabInsertIndex = 2 // After HISTORY, before LIBRARY
-
-                    items.forEachIndexed { index, destination ->
-                        if (index == fabInsertIndex) {
-                            // Spacer for center FAB
-                            Spacer(modifier = Modifier.width(56.dp))
-                        }
-
-                        val selected = currentDestination?.hierarchy?.any {
-                            it.route == destination.route
-                        } == true
-
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
-                                    contentDescription = destination.label
-                                )
-                            },
-                            label = { Text(destination.label, style = MaterialTheme.typography.labelSmall) }
-                        )
-                    }
+                val selectedIndex = when {
+                    currentDestination?.hierarchy?.any { it.route == NavRoutes.HOME } == true -> 0
+                    currentDestination?.hierarchy?.any { it.route == NavRoutes.HISTORY } == true -> 1
+                    currentDestination?.hierarchy?.any { it.route == NavRoutes.LIBRARY } == true -> 3
+                    currentDestination?.hierarchy?.any { it.route == NavRoutes.SETTINGS } == true -> 4
+                    else -> 0
                 }
-            }
-        },
-        floatingActionButton = {
-            if (isTopLevel) {
+
                 Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.offset(y = 48.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E1E2E))
+                        .navigationBarsPadding()
                 ) {
-                    FloatingActionButton(
-                        onClick = { navController.navigate(NavRoutes.chatDetail(-1L)) },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 6.dp,
-                            pressedElevation = 12.dp
-                        ),
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "New Chat",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                    AndroidView(
+                        factory = { context ->
+                            (LayoutInflater.from(context)
+                                .inflate(R.layout.curved_bottom_nav, null) as CurvedBottomNavigationView)
+                                .apply {
+                                    layoutParams = ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT
+                                    )
+                                    setMenuItems(menuItems, selectedIndex)
+                                    setOnMenuItemClickListener { _, index ->
+                                        when (index) {
+                                            0 -> navController.navigate(NavRoutes.HOME) {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true; restoreState = true
+                                            }
+                                            1 -> navController.navigate(NavRoutes.HISTORY) {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true; restoreState = true
+                                            }
+                                            2 -> navController.navigate(NavRoutes.chatDetail(-1L))
+                                            3 -> navController.navigate(NavRoutes.LIBRARY) {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true; restoreState = true
+                                            }
+                                            4 -> navController.navigate(NavRoutes.SETTINGS) {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true; restoreState = true
+                                            }
+                                        }
+                                    }
+                                }
+                        },
+                        update = { view ->
+                            view.onMenuItemClick(selectedIndex)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         },
@@ -138,7 +127,7 @@ fun EduMateAppShell() {
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
         ) {
             composable(NavRoutes.ONBOARDING) {
                 OnboardingScreen(
