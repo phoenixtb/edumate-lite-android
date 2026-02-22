@@ -1,0 +1,24 @@
+*.iml
+.gradle
+/local.properties
+local.properties
+.idea/
+.DS_Store
+/build
+*/build
+/captures
+.externalNativeBuild
+.cxx
+.kotlin
+/init_docs
+
+# AI model files (large binaries)
+*.gguf
+*.litertlm
+*.tflite
+*.task
+*.bin
+sentencepiece.model
+
+# VS Code / Cursor
+.vscode/

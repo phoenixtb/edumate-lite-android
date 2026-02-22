@@ -1,0 +1,2 @@
+-keep class com.llamatik.** { *; }
+-keep class com.google.ai.edge.** { *; }

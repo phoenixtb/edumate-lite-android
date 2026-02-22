@@ -1,0 +1,95 @@
+package io.foxbird.edumate.core.model
+
+import io.foxbird.edgeai.engine.EngineType
+import io.foxbird.edgeai.model.ModelConfig
+import io.foxbird.edgeai.model.ModelPurpose
+
+object AppModelConfigs {
+
+    val GEMMA_3N_E2B_LITERT = ModelConfig(
+        id = "gemma-3n-e2b-litert",
+        name = "Gemma 3n E2B",
+        description = "Vision & text, hardware accelerated",
+        huggingFaceRepo = "litert-community/gemma-3n-E2B-it",
+        filename = "gemma-3n-E2B-it-int4.litertlm",
+        fileSizeMB = 3500,
+        requiredRamGB = 4,
+        contextLength = 4096,
+        engineType = EngineType.LITE_RT,
+        isBundled = true,
+        fallbackModelId = "gemma-3n-e2b-gguf"
+    )
+
+    val EMBEDDING_GEMMA_LITERT = ModelConfig(
+        id = "embedding-gemma-300m-litert",
+        name = "EmbeddingGemma 300M",
+        description = "Semantic search, hardware accelerated",
+        huggingFaceRepo = "litert-community/embeddinggemma-300m",
+        filename = "embeddinggemma-300M_seq2048_mixed-precision.tflite",
+        fileSizeMB = 200,
+        requiredRamGB = 1,
+        contextLength = 2048,
+        purpose = ModelPurpose.EMBEDDING,
+        engineType = EngineType.LITE_RT,
+        isBundled = true,
+        fallbackModelId = "nomic-embed-text-v1.5-q4km"
+    )
+
+    val GEMMA_3N_E2B_GGUF = ModelConfig(
+        id = "gemma-3n-e2b-gguf",
+        name = "Gemma 3n E2B (GGUF)",
+        description = "Vision & text, CPU optimized",
+        huggingFaceRepo = "ggml-org/gemma-3n-E2B-it-GGUF",
+        filename = "gemma-3n-E2B-it-Q4_K_M.gguf",
+        fileSizeMB = 2500,
+        requiredRamGB = 4,
+        contextLength = 4096,
+        engineType = EngineType.LLAMA_CPP,
+        isBundled = false
+    )
+
+    val GEMMA_2B = ModelConfig(
+        id = "gemma-2-2b-it-q4km",
+        name = "Gemma 2 2B IT",
+        description = "Lightweight inference, ~1.5GB",
+        huggingFaceRepo = "bartowski/gemma-2-2b-it-GGUF",
+        filename = "gemma-2-2b-it-Q4_K_M.gguf",
+        fileSizeMB = 1500,
+        requiredRamGB = 3,
+        contextLength = 4096,
+        engineType = EngineType.LLAMA_CPP,
+        isBundled = false
+    )
+
+    val NOMIC_EMBED = ModelConfig(
+        id = "nomic-embed-text-v1.5-q4km",
+        name = "Nomic Embed v1.5",
+        description = "Embedding model, ~100MB",
+        huggingFaceRepo = "nomic-ai/nomic-embed-text-v1.5-GGUF",
+        filename = "nomic-embed-text-v1.5.Q4_K_M.gguf",
+        fileSizeMB = 100,
+        requiredRamGB = 1,
+        contextLength = 2048,
+        purpose = ModelPurpose.EMBEDDING,
+        engineType = EngineType.LLAMA_CPP,
+        isBundled = false
+    )
+
+    val QWEN_1_5B = ModelConfig(
+        id = "qwen2.5-1.5b-instruct-q4km",
+        name = "Qwen 2.5 1.5B Instruct",
+        description = "Lightweight alternative, ~1.1GB",
+        huggingFaceRepo = "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        fileSizeMB = 1100,
+        requiredRamGB = 2,
+        contextLength = 4096,
+        engineType = EngineType.LLAMA_CPP,
+    )
+
+    val ALL_INFERENCE = listOf(GEMMA_3N_E2B_LITERT, GEMMA_3N_E2B_GGUF, GEMMA_2B, QWEN_1_5B)
+    val ALL_EMBEDDING = listOf(EMBEDDING_GEMMA_LITERT, NOMIC_EMBED)
+    val ALL = ALL_INFERENCE + ALL_EMBEDDING
+
+    fun findById(id: String): ModelConfig? = ALL.find { it.id == id }
+}
