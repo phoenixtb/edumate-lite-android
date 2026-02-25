@@ -32,6 +32,9 @@ dependencies {
     api(libs.litert.core)
     api(libs.litert.lm)
 
+    // TFLite Support — provides SentencePiece JNI tokenizer for embedding models
+    implementation(libs.tensorflow.lite.support)
+
     // Arrow (functional error handling)
     api(libs.arrow.core)
 

@@ -2,13 +2,15 @@ package io.foxbird.edumate.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.foxbird.edgeai.engine.MemoryMonitor
+import io.foxbird.edgeai.engine.MemorySnapshot
 import io.foxbird.edgeai.engine.ModelManager
 import io.foxbird.edgeai.model.DownloadEvent
 import io.foxbird.edgeai.model.ModelConfig
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.edumate.data.local.EduMateDatabase
-import io.foxbird.edumate.data.local.dao.ChunkDao
-import io.foxbird.edumate.data.local.dao.MaterialDao
+import io.foxbird.edumate.data.repository.ChunkRepository
+import io.foxbird.edumate.data.repository.MaterialRepository
 import io.foxbird.edumate.data.preferences.AppPreferences
 import io.foxbird.edumate.data.preferences.UserPreferencesManager
 import io.foxbird.edumate.ui.theme.ThemeMode
@@ -22,8 +24,9 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val prefsManager: UserPreferencesManager,
     val modelManager: ModelManager,
-    private val materialDao: MaterialDao,
-    private val chunkDao: ChunkDao,
+    private val memoryMonitor: MemoryMonitor,
+    private val materialRepository: MaterialRepository,
+    private val chunkRepository: ChunkRepository,
     private val database: EduMateDatabase
 ) : ViewModel() {
 
@@ -32,6 +35,8 @@ class SettingsViewModel(
 
     val modelStates: StateFlow<Map<String, ModelState>> = modelManager.modelStates
     val activeInferenceModelId: StateFlow<String?> = modelManager.activeInferenceModelId
+
+    val memorySnapshot: StateFlow<MemorySnapshot> = memoryMonitor.snapshot
 
     private val _materialCount = MutableStateFlow(0)
     val materialCount: StateFlow<Int> = _materialCount.asStateFlow()
@@ -42,22 +47,33 @@ class SettingsViewModel(
     private val _isLoadingModel = MutableStateFlow<String?>(null)
     val isLoadingModel: StateFlow<String?> = _isLoadingModel.asStateFlow()
 
+    private val _lastLoadError = MutableStateFlow<String?>(null)
+    val lastLoadError: StateFlow<String?> = _lastLoadError.asStateFlow()
+
     init {
         refreshCounts()
+        // Ensure model states are up to date (file availability checks)
+        viewModelScope.launch { modelManager.initialize() }
     }
 
     private fun refreshCounts() {
         viewModelScope.launch {
-            _materialCount.value = materialDao.getCount()
-            _chunkCount.value = chunkDao.getTotalCount()
+            _materialCount.value = materialRepository.getCount()
+            _chunkCount.value = chunkRepository.getTotalCount()
         }
     }
 
     fun loadModel(config: ModelConfig) {
         viewModelScope.launch {
             _isLoadingModel.value = config.id
+            _lastLoadError.value = null
             try {
-                modelManager.loadModel(config)
+                val success = modelManager.loadModel(config)
+                if (!success) {
+                    val state = modelManager.modelStates.value[config.id]
+                    _lastLoadError.value = (state as? ModelState.LoadFailed)?.error
+                        ?: "Failed to load model"
+                }
             } finally {
                 _isLoadingModel.value = null
             }
@@ -76,7 +92,10 @@ class SettingsViewModel(
                     when (event) {
                         is DownloadEvent.Progress -> { /* state updated by ModelManager */ }
                         is DownloadEvent.Complete -> { _isLoadingModel.value = null }
-                        is DownloadEvent.Error -> { _isLoadingModel.value = null }
+                        is DownloadEvent.Error -> {
+                            _isLoadingModel.value = null
+                            _lastLoadError.value = event.message
+                        }
                         is DownloadEvent.Retrying -> { /* keep loading indicator */ }
                     }
                 }

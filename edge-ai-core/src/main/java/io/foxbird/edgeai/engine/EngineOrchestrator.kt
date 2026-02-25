@@ -15,13 +15,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Central facade that routes inference/embedding requests to the appropriate engine
- * based on the currently loaded models. Manages engine lifecycles, fallback logic,
- * and concurrent model support (one inference + one embedding model simultaneously).
+ * Routes inference/embedding requests to the appropriate engine.
+ *
+ * Generation engines ([GenerationEngine]) and embedding engines ([EmbeddingEngine]) are held
+ * in separate maps keyed by [EngineType]. This eliminates the need for any engine-type-specific
+ * branching (previously required by the monolithic LiteRtEngine).
+ *
+ * One inference model and one embedding model may be loaded simultaneously.
  */
 class EngineOrchestrator(
     private val llamaCppEngine: LlamaCppEngine,
-    private val liteRtEngine: LiteRtEngine,
+    private val liteRtGenEngine: LiteRtGenerationEngine,
+    private val liteRtEmbEngine: LiteRtEmbeddingEngine,
     private val memoryMonitor: MemoryMonitor
 ) {
     companion object {
@@ -29,6 +34,16 @@ class EngineOrchestrator(
     }
 
     private val loadMutex = Mutex()
+
+    private val generationEngines: Map<EngineType, GenerationEngine> = mapOf(
+        EngineType.LLAMA_CPP to llamaCppEngine,
+        EngineType.LITE_RT to liteRtGenEngine
+    )
+
+    private val embeddingEngines: Map<EngineType, EmbeddingEngine> = mapOf(
+        EngineType.LLAMA_CPP to llamaCppEngine,
+        EngineType.LITE_RT to liteRtEmbEngine
+    )
 
     private val _activeInferenceEngine = MutableStateFlow<EngineType?>(null)
     val activeInferenceEngine: StateFlow<EngineType?> = _activeInferenceEngine.asStateFlow()
@@ -47,9 +62,7 @@ class EngineOrchestrator(
 
     private var allModels: List<ModelConfig> = emptyList()
 
-    fun registerModels(models: List<ModelConfig>) {
-        allModels = models
-    }
+    fun registerModels(models: List<ModelConfig>) { allModels = models }
 
     fun findModelById(id: String): ModelConfig? = allModels.find { it.id == id }
 
@@ -57,20 +70,16 @@ class EngineOrchestrator(
         _modelStates.value = _modelStates.value.toMutableMap().apply { this[modelId] = state }
     }
 
-    fun getEngineForType(type: EngineType): InferenceEngine = when (type) {
-        EngineType.LLAMA_CPP -> llamaCppEngine
-        EngineType.LITE_RT -> liteRtEngine
-    }
+    // -------------------------------------------------------------------------
+    // Load / Unload
+    // -------------------------------------------------------------------------
 
-    private fun inferenceEngine(): InferenceEngine? {
-        return _activeInferenceEngine.value?.let { getEngineForType(it) }
-    }
-
-    private fun embeddingEngine(): InferenceEngine? {
-        return _activeEmbeddingEngine.value?.let { getEngineForType(it) }
-    }
-
-    suspend fun loadModel(config: ModelConfig, modelPath: String, threads: Int): Boolean = loadMutex.withLock {
+    suspend fun loadModel(
+        config: ModelConfig,
+        modelPath: String,
+        threads: Int,
+        tokenizerPath: String? = null
+    ): Boolean = loadMutex.withLock {
         val requiredMb = config.fileSizeMB.toLong()
         if (!memoryMonitor.canAllocateMb(requiredMb)) {
             Logger.e(TAG, "Insufficient memory for ${config.name} (need ${requiredMb}MB)")
@@ -78,26 +87,31 @@ class EngineOrchestrator(
             return false
         }
 
-        val engine = getEngineForType(config.engineType)
+        updateModelState(config.id, ModelState.Loading)
 
-        when (config.purpose) {
+        val success = when (config.purpose) {
             ModelPurpose.INFERENCE -> {
+                val engine = generationEngines[config.engineType]
+                    ?: return failLoad(config, "No generation engine for ${config.engineType}")
+                // Unload any currently active inference model on the same engine
                 if (_activeInferenceEngine.value == config.engineType) {
                     engine.unloadModel()
                     _activeInferenceModelId.value?.let { updateModelState(it, ModelState.Downloaded) }
                 }
+                engine.loadModel(modelPath, config.contextLength, threads)
             }
             ModelPurpose.EMBEDDING -> {
+                val engine = embeddingEngines[config.engineType]
+                    ?: return failLoad(config, "No embedding engine for ${config.engineType}")
+                // Unload any currently active embedding model on the same engine
                 if (_activeEmbeddingEngine.value == config.engineType) {
                     engine.unloadModel()
                     _activeEmbeddingModelId.value?.let { updateModelState(it, ModelState.Downloaded) }
                 }
+                engine.loadModel(modelPath, config.contextLength, tokenizerPath)
             }
         }
 
-        updateModelState(config.id, ModelState.Loading)
-
-        val success = engine.loadModel(modelPath, config.contextLength, threads)
         if (success) {
             updateModelState(config.id, ModelState.Ready)
             when (config.purpose) {
@@ -114,81 +128,96 @@ class EngineOrchestrator(
             return true
         }
 
-        if (config.engineType == EngineType.LITE_RT && config.fallbackModelId != null) {
-            Logger.w(TAG, "LiteRT failed for ${config.name}, fallback not auto-triggered (caller must handle)")
-        }
+        val errorMsg = when (config.purpose) {
+            ModelPurpose.INFERENCE -> generationEngines[config.engineType]?.lastLoadError
+            ModelPurpose.EMBEDDING -> embeddingEngines[config.engineType]?.lastLoadError
+        } ?: "Engine failed to load model"
 
-        val errorMsg = engine.lastLoadError ?: "Engine failed to load model"
         updateModelState(config.id, ModelState.LoadFailed(errorMsg))
         return false
     }
 
+    private fun failLoad(config: ModelConfig, reason: String): Boolean {
+        updateModelState(config.id, ModelState.LoadFailed(reason))
+        return false
+    }
+
     fun unloadModel(config: ModelConfig) {
-        val engine = getEngineForType(config.engineType)
-        engine.unloadModel()
-        updateModelState(config.id, ModelState.Downloaded)
         when (config.purpose) {
             ModelPurpose.INFERENCE -> {
+                generationEngines[config.engineType]?.unloadModel()
                 if (_activeInferenceModelId.value == config.id) {
                     _activeInferenceEngine.value = null
                     _activeInferenceModelId.value = null
                 }
             }
             ModelPurpose.EMBEDDING -> {
+                embeddingEngines[config.engineType]?.unloadModel()
                 if (_activeEmbeddingModelId.value == config.id) {
                     _activeEmbeddingEngine.value = null
                     _activeEmbeddingModelId.value = null
                 }
             }
         }
+        updateModelState(config.id, ModelState.Downloaded)
     }
 
+    // -------------------------------------------------------------------------
+    // Inference / Embedding delegation
+    // -------------------------------------------------------------------------
+
     fun generate(prompt: String, params: GenerationParams = GenerationParams()): Flow<String> {
-        val engine = inferenceEngine()
+        val engine = _activeInferenceEngine.value?.let { generationEngines[it] }
             ?: throw IllegalStateException("No inference model loaded")
         return engine.generate(prompt, params)
     }
 
-    suspend fun generateComplete(prompt: String, params: GenerationParams = GenerationParams()): AppResult<String> {
-        val engine = inferenceEngine()
+    suspend fun generateComplete(
+        prompt: String,
+        params: GenerationParams = GenerationParams()
+    ): AppResult<String> {
+        val engine = _activeInferenceEngine.value?.let { generationEngines[it] }
             ?: return AppError.Llm.GenerationFailed("No inference model loaded").left()
         return engine.generateComplete(prompt, params)
     }
 
     suspend fun embed(text: String): AppResult<FloatArray> {
-        val engine = embeddingEngine()
+        val engine = _activeEmbeddingEngine.value?.let { embeddingEngines[it] }
             ?: return AppError.Llm.GenerationFailed("No embedding model loaded").left()
         return engine.embed(text)
     }
 
     fun tokenCount(text: String): Int {
-        return inferenceEngine()?.tokenCount(text)
-            ?: embeddingEngine()?.tokenCount(text)
+        return _activeInferenceEngine.value?.let { generationEngines[it]?.tokenCount(text) }
             ?: (text.length * 0.3).toInt().coerceAtLeast(1)
     }
 
-    fun getEmbeddingDimension(): Int = embeddingEngine()?.getEmbeddingDimension() ?: 0
+    fun getEmbeddingDimension(): Int =
+        _activeEmbeddingEngine.value?.let { embeddingEngines[it]?.getEmbeddingDimension() } ?: 0
 
-    fun getContextSize(): Int = inferenceEngine()?.getContextSize() ?: 0
+    fun getContextSize(): Int =
+        _activeInferenceEngine.value?.let { generationEngines[it]?.getContextSize() } ?: 0
 
     fun cancelGeneration() {
-        inferenceEngine()?.cancelGeneration()
+        _activeInferenceEngine.value?.let { generationEngines[it]?.cancelGeneration() }
     }
 
-    fun isInferenceReady(): Boolean = inferenceEngine()?.isModelLoaded() == true
-    fun isEmbeddingReady(): Boolean = embeddingEngine()?.isModelLoaded() == true
+    fun isInferenceReady(): Boolean =
+        _activeInferenceEngine.value?.let { generationEngines[it]?.isModelLoaded() } == true
+
+    fun isEmbeddingReady(): Boolean =
+        _activeEmbeddingEngine.value?.let { embeddingEngines[it]?.isModelLoaded() } == true
 
     suspend fun handleMemoryPressure() {
-        Logger.w(TAG, "Handling memory pressure — unloading embedding model if possible")
-        val embId = _activeEmbeddingModelId.value
-        if (embId != null) {
-            val config = findModelById(embId) ?: return
-            unloadModel(config)
-        }
+        Logger.w(TAG, "Memory pressure — unloading embedding model")
+        val embId = _activeEmbeddingModelId.value ?: return
+        val config = findModelById(embId) ?: return
+        unloadModel(config)
     }
 
     fun destroy() {
         llamaCppEngine.destroy()
-        liteRtEngine.destroy()
+        liteRtGenEngine.destroy()
+        liteRtEmbEngine.destroy()
     }
 }

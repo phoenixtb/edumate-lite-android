@@ -2,8 +2,6 @@ package io.foxbird.edumate.domain.service
 
 import io.foxbird.edgeai.util.Logger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,13 +32,11 @@ enum class TaskStatus {
     PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
 }
 
-class TaskQueue {
+class TaskQueue(private val scope: CoroutineScope) {
 
     companion object {
         private const val TAG = "TaskQueue"
     }
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
     private val pending = ConcurrentLinkedQueue<AiTask>()
 

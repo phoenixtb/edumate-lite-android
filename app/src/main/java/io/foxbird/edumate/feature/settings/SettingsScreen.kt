@@ -12,43 +12,37 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,37 +54,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.foxbird.edgeai.engine.EngineType
-import io.foxbird.edgeai.model.ModelConfig
+import io.foxbird.edgeai.engine.MemoryPressure
+import io.foxbird.edgeai.engine.MemorySnapshot
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.edumate.core.model.AppModelConfigs
 import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.SectionHeader
-import io.foxbird.edumate.ui.components.StatusChip
 import io.foxbird.edumate.ui.theme.StatusActive
-import io.foxbird.edumate.ui.theme.StatusActiveContainer
-import io.foxbird.edumate.ui.theme.StatusDownloading
-import io.foxbird.edumate.ui.theme.StatusDownloadingContainer
 import io.foxbird.edumate.ui.theme.ThemeMode
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = koinViewModel(),
-    onNavigateToDevTools: () -> Unit = {}
+    onNavigateToDevTools: () -> Unit = {},
+    onNavigateToModelManager: () -> Unit = {}
 ) {
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val modelStates by viewModel.modelStates.collectAsStateWithLifecycle()
     val activeModelId by viewModel.activeInferenceModelId.collectAsStateWithLifecycle()
     val materialCount by viewModel.materialCount.collectAsStateWithLifecycle()
     val chunkCount by viewModel.chunkCount.collectAsStateWithLifecycle()
-    val loadingModelId by viewModel.isLoadingModel.collectAsStateWithLifecycle()
+    val memorySnapshot by viewModel.memorySnapshot.collectAsStateWithLifecycle()
 
     var showClearDialog by remember { mutableStateOf(false) }
 
@@ -120,6 +109,12 @@ fun SettingsScreen(
         )
     }
 
+    val settingsStatusColor = when {
+        modelStates.values.any { it is ModelState.Ready } -> StatusActive
+        modelStates.values.any { it is ModelState.Loading } -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -127,12 +122,25 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            IconButton(onClick = onNavigateToModelManager) {
+                Icon(
+                    Icons.Filled.Memory,
+                    contentDescription = "AI & Resources",
+                    tint = settingsStatusColor
+                )
+            }
+        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── 1. Appearance ──────────────────────────────────────────
         SectionHeader("Appearance")
@@ -354,51 +362,13 @@ fun SettingsScreen(
         // ── 5. AI Models ───────────────────────────────────────────
         SectionHeader("AI Models")
 
-        val activeModelName = activeModelId?.let { AppModelConfigs.findById(it)?.name } ?: "None"
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-            )
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    "Active for text: $activeModelName",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        AppModelConfigs.ALL.forEach { config ->
-            val state = modelStates[config.id] ?: ModelState.NotDownloaded
-            val canRun = viewModel.modelManager.canRunModel(config)
-            val isThisLoading = loadingModelId == config.id
-
-            ModelCard(
-                config = config,
-                state = state,
-                canRun = canRun,
-                isLoading = isThisLoading,
-                onDownload = { viewModel.downloadModel(config) },
-                onLoad = { viewModel.loadModel(config) },
-                onUnload = { viewModel.unloadModel(config) },
-                onDelete = { viewModel.deleteModel(config) }
-            )
-        }
+        AiModelsSummaryCard(
+            modelStates = modelStates,
+            activeModelId = activeModelId,
+            memorySnapshot = memorySnapshot,
+            onManage = onNavigateToModelManager,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -458,307 +428,96 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun ModelCard(
-    config: ModelConfig,
-    state: ModelState,
-    canRun: Boolean,
-    isLoading: Boolean,
-    onDownload: () -> Unit,
-    onLoad: () -> Unit,
-    onUnload: () -> Unit,
-    onDelete: () -> Unit
+private fun AiModelsSummaryCard(
+    modelStates: Map<String, ModelState>,
+    activeModelId: String?,
+    memorySnapshot: MemorySnapshot,
+    onManage: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val engineIcon = when (config.engineType) {
-        EngineType.LITE_RT -> Icons.Filled.Memory
-        EngineType.LLAMA_CPP -> Icons.Filled.Terminal
-    }
-    val engineLabel = when (config.engineType) {
-        EngineType.LITE_RT -> "LiteRT"
-        EngineType.LLAMA_CPP -> "llama.cpp"
-    }
-    val engineChipColor = when (config.engineType) {
-        EngineType.LITE_RT -> Color(0xFF00897B)
-        EngineType.LLAMA_CPP -> Color(0xFF448AFF)
+    val activeModelConfig = activeModelId?.let { AppModelConfigs.findById(it) }
+    val isAnyReady = modelStates.values.any { it is ModelState.Ready }
+    val isAnyLoading = modelStates.values.any { it is ModelState.Loading }
+    val availableRamGB = memorySnapshot.availableMb / 1024f
+    val ramColor = when (memorySnapshot.pressure) {
+        MemoryPressure.NORMAL -> Color(0xFF69F0AE)
+        MemoryPressure.MODERATE -> Color(0xFFFFAB00)
+        MemoryPressure.CRITICAL -> Color(0xFFFF5252)
     }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = modifier.clickable(onClick = onManage),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = when {
+                isAnyReady -> StatusActive.copy(alpha = 0.08f)
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = when {
+                    isAnyReady -> StatusActive.copy(alpha = 0.2f)
+                    isAnyLoading -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                modifier = Modifier.size(40.dp)
             ) {
-                IconContainer(
-                    icon = engineIcon,
-                    containerColor = engineChipColor.copy(alpha = 0.15f),
-                    iconColor = engineChipColor
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(config.name, style = MaterialTheme.typography.titleSmall)
-                        StatusChip(
-                            text = engineLabel,
-                            containerColor = engineChipColor.copy(alpha = 0.15f),
-                            textColor = engineChipColor
+                Box(contentAlignment = Alignment.Center) {
+                    if (isAnyLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            if (isAnyReady) Icons.Filled.CheckCircle else Icons.Filled.Memory,
+                            contentDescription = null,
+                            tint = if (isAnyReady) StatusActive else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        config.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        config.fileSizeDisplay,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
                 }
+            }
 
-                ModelStateAction(
-                    config = config,
-                    state = state,
-                    canRun = canRun,
-                    isLoading = isLoading,
-                    onDownload = onDownload,
-                    onLoad = onLoad,
-                    onUnload = onUnload,
-                    onDelete = onDelete
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = when {
+                        isAnyReady -> "Tutor Ready · ${activeModelConfig?.name ?: "Model"}"
+                        isAnyLoading -> "Setting up your AI tutor..."
+                        else -> "No model loaded"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isAnyReady) StatusActive else MaterialTheme.colorScheme.onSurface
                 )
-            }
-
-            if (state is ModelState.Downloading) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    LinearProgressIndicator(
-                        progress = { state.progress },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = StatusDownloading,
-                        trackColor = StatusDownloadingContainer,
-                        strokeCap = StrokeCap.Round,
-                    )
-                    Text(
-                        "${(state.progress * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = StatusDownloading
-                    )
-                }
-            }
-
-            if (!canRun) {
-                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Filled.Memory, null, Modifier.size(10.dp), tint = ramColor)
                     Text(
-                        "Insufficient RAM",
+                        "%.1f GB RAM free  ·  Tap to manage".format(availableRamGB),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun ModelStateAction(
-    config: ModelConfig,
-    state: ModelState,
-    canRun: Boolean,
-    isLoading: Boolean,
-    onDownload: () -> Unit,
-    onLoad: () -> Unit,
-    onUnload: () -> Unit,
-    onDelete: () -> Unit
-) {
-    when {
-        state is ModelState.Downloading -> {
-            StatusChip(
-                text = "Downloading",
-                containerColor = StatusDownloadingContainer,
-                textColor = StatusDownloading
-            )
-        }
-
-        state is ModelState.Loading || (isLoading && state !is ModelState.Ready) -> {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        state is ModelState.Ready -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                StatusChip(
-                    text = "Active",
-                    containerColor = StatusActiveContainer,
-                    textColor = StatusActive
-                )
-                OverflowMenu(
-                    showUnload = true,
-                    showDelete = false,
-                    onUnload = onUnload,
-                    onDelete = onDelete
-                )
-            }
-        }
-
-        state is ModelState.Downloaded -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (canRun) {
-                    IconButton(onClick = onLoad, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Load model",
-                            tint = StatusActive
-                        )
-                    }
-                } else {
-                    Icon(
-                        Icons.Filled.Lock,
-                        contentDescription = "Cannot load",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                OverflowMenu(
-                    showUnload = false,
-                    showDelete = !config.isBundled,
-                    onUnload = onUnload,
-                    onDelete = onDelete
-                )
-            }
-        }
-
-        state is ModelState.NotDownloaded -> {
-            IconButton(onClick = onDownload, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Filled.Download,
-                    contentDescription = "Download model",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-
-        state is ModelState.DownloadFailed -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                StatusChip(
-                    text = "Failed",
-                    containerColor = Color(0xFF3A1B1B),
-                    textColor = Color(0xFFFF5252)
-                )
-                IconButton(onClick = onDownload, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.Filled.Download,
-                        contentDescription = "Retry download",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
-
-        state is ModelState.LoadFailed -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                StatusChip(
-                    text = "Load failed",
-                    containerColor = Color(0xFF3A1B1B),
-                    textColor = Color(0xFFFF5252)
-                )
-                if (canRun) {
-                    IconButton(onClick = onLoad, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            Icons.Filled.PlayArrow,
-                            contentDescription = "Retry load",
-                            tint = StatusActive
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OverflowMenu(
-    showUnload: Boolean,
-    showDelete: Boolean,
-    onUnload: () -> Unit,
-    onDelete: () -> Unit
-) {
-    if (!showUnload && !showDelete) return
-
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }, modifier = Modifier.size(36.dp)) {
             Icon(
-                Icons.Filled.MoreVert,
-                contentDescription = "More options",
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            if (showUnload) {
-                DropdownMenuItem(
-                    text = { Text("Unload") },
-                    onClick = { onUnload(); expanded = false },
-                    leadingIcon = {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
-            }
-            if (showDelete) {
-                DropdownMenuItem(
-                    text = { Text("Delete", color = Color(0xFFFF5252)) },
-                    onClick = { onDelete(); expanded = false },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFFF5252),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                )
-            }
-        }
     }
 }
+

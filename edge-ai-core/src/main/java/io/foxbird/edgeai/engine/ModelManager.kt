@@ -20,8 +20,8 @@ import java.io.FileOutputStream
  * High-level model lifecycle management: discovery, bundled asset copy,
  * download, load/unload with fallback, deletion.
  *
- * @param allModels The complete list of model configurations this app supports.
- * @param bundledModelsAssetDir The asset directory containing bundled models (default "models").
+ * Tokenizer paths are resolved here and passed into [EngineOrchestrator.loadModel] so
+ * engines receive them at load time — no separate setter calls required.
  */
 class ModelManager(
     private val context: Context,
@@ -44,8 +44,14 @@ class ModelManager(
     val activeEmbeddingModelId: StateFlow<String?> get() = orchestrator.activeEmbeddingModelId
 
     suspend fun initialize() {
+        val currentStates = orchestrator.modelStates.value
         val states = mutableMapOf<String, ModelState>()
         for (config in allModels) {
+            val current = currentStates[config.id]
+            if (current is ModelState.Ready || current is ModelState.Loading) {
+                states[config.id] = current
+                continue
+            }
             states[config.id] = when {
                 isModelAvailable(config) -> ModelState.Downloaded
                 config.isBundled && isBundledAssetPresent(config) -> ModelState.Downloaded
@@ -53,18 +59,14 @@ class ModelManager(
             }
         }
         states.forEach { (id, state) -> orchestrator.updateModelState(id, state) }
-
         copyBundledModelsIfNeeded()
-
-        Logger.d(TAG, "Initialized: ${states.count { it.value == ModelState.Downloaded }} models available")
+        Logger.d(TAG, "Initialized: ${states.count { it.value is ModelState.Downloaded }} models available")
     }
 
     private fun isBundledAssetPresent(config: ModelConfig): Boolean {
         return try {
             context.assets.open("$bundledModelsAssetDir/${config.filename}").use { true }
-        } catch (_: Exception) {
-            false
-        }
+        } catch (_: Exception) { false }
     }
 
     private suspend fun copyBundledModelsIfNeeded() = withContext(Dispatchers.IO) {
@@ -73,22 +75,37 @@ class ModelManager(
 
         for (config in allModels.filter { it.isBundled }) {
             val target = getModelPath(config)
-            if (target.exists() && target.length() > 10 * 1024 * 1024) continue
+            if (!target.exists() || target.length() <= 10 * 1024 * 1024) {
+                try {
+                    context.assets.open("$bundledModelsAssetDir/${config.filename}").use { input ->
+                        FileOutputStream(target).use { output -> input.copyTo(output) }
+                    }
+                    orchestrator.updateModelState(config.id, ModelState.Downloaded)
+                    Logger.i(TAG, "Copied bundled model: ${config.filename}")
+                } catch (_: Exception) { /* Not present in this build variant */ }
+            }
 
-            try {
-                context.assets.open("$bundledModelsAssetDir/${config.filename}").use { input ->
-                    FileOutputStream(target).use { output -> input.copyTo(output) }
+            val tokenizerFilename = config.tokenizerFilename ?: continue
+            val tokenizerTarget = File(modelsDir, tokenizerFilename)
+            if (!tokenizerTarget.exists()) {
+                try {
+                    context.assets.open("$bundledModelsAssetDir/$tokenizerFilename").use { input ->
+                        FileOutputStream(tokenizerTarget).use { output -> input.copyTo(output) }
+                    }
+                    Logger.i(TAG, "Copied tokenizer: $tokenizerFilename")
+                } catch (_: Exception) {
+                    Logger.w(TAG, "Tokenizer asset not found: $tokenizerFilename")
                 }
-                orchestrator.updateModelState(config.id, ModelState.Downloaded)
-                Logger.i(TAG, "Copied bundled model: ${config.filename}")
-            } catch (_: Exception) {
-                // Asset not present in this build
             }
         }
     }
 
-    fun getModelPath(config: ModelConfig): File {
-        return File(downloader.getModelsDirectory(), config.filename)
+    fun getModelPath(config: ModelConfig): File = File(downloader.getModelsDirectory(), config.filename)
+
+    fun getTokenizerPath(config: ModelConfig): String? {
+        val filename = config.tokenizerFilename ?: return null
+        val file = File(downloader.getModelsDirectory(), filename)
+        return if (file.exists()) file.absolutePath else null
     }
 
     fun isModelAvailable(config: ModelConfig): Boolean {
@@ -118,29 +135,34 @@ class ModelManager(
     suspend fun loadModel(config: ModelConfig): Boolean {
         if (!isModelAvailable(config)) {
             Logger.e(TAG, "Cannot load — not available: ${config.id}")
+            orchestrator.updateModelState(
+                config.id,
+                ModelState.LoadFailed("Model file not found. Copy or download the model first.")
+            )
             return false
         }
 
         val path = getModelPath(config).absolutePath
         val threads = deviceInfo.getOptimalThreadCount()
+        // Resolve tokenizer path at load time — passed directly into the engine via orchestrator
+        val tokenizerPath = getTokenizerPath(config)
 
-        val success = orchestrator.loadModel(config, path, threads)
+        val success = orchestrator.loadModel(config, path, threads, tokenizerPath)
 
         if (!success && config.fallbackModelId != null) {
             val fallback = allModels.find { it.id == config.fallbackModelId }
             if (fallback != null && isModelAvailable(fallback)) {
                 Logger.w(TAG, "Primary failed, trying fallback: ${fallback.name}")
                 val fbPath = getModelPath(fallback).absolutePath
-                return orchestrator.loadModel(fallback, fbPath, threads)
+                val fbTokenizerPath = getTokenizerPath(fallback)
+                return orchestrator.loadModel(fallback, fbPath, threads, fbTokenizerPath)
             }
         }
 
         return success
     }
 
-    fun unloadModel(config: ModelConfig) {
-        orchestrator.unloadModel(config)
-    }
+    fun unloadModel(config: ModelConfig) { orchestrator.unloadModel(config) }
 
     suspend fun deleteModel(config: ModelConfig): Boolean {
         if (activeInferenceModelId.value == config.id || activeEmbeddingModelId.value == config.id) {
@@ -151,12 +173,14 @@ class ModelManager(
         return success
     }
 
-    fun canRunModel(config: ModelConfig): Boolean {
-        return deviceInfo.getTotalRamGB() >= config.requiredRamGB
-    }
+    fun canRunModel(config: ModelConfig): Boolean = deviceInfo.getTotalRamGB() >= config.requiredRamGB
 
     fun getDeviceSummary(): String {
         val s = deviceInfo.getDeviceSummary()
         return "${s.manufacturer} ${s.model} | ${s.totalRamGB}GB RAM"
     }
+
+    fun getAvailableStorageGB(): Float = downloader.getAvailableStorage() / (1024f * 1024f * 1024f)
+    fun getTotalRamGB(): Float = deviceInfo.getTotalRamGB()
+    fun getAvailableRamGB(): Float = deviceInfo.getAvailableRamGB()
 }

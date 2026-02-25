@@ -1,8 +1,8 @@
 package io.foxbird.edumate.domain.engine
 
 import io.foxbird.edumate.data.local.converter.Converters
-import io.foxbird.edumate.data.local.dao.ChunkDao
 import io.foxbird.edumate.data.local.entity.ChunkEntity
+import io.foxbird.edumate.data.repository.ChunkRepository
 import kotlin.math.sqrt
 
 data class SearchResult(
@@ -10,7 +10,7 @@ data class SearchResult(
     val score: Float
 )
 
-class VectorSearchEngine(private val chunkDao: ChunkDao) {
+class VectorSearchEngine(private val chunkRepository: ChunkRepository) {
 
     private val converters = Converters()
 
@@ -21,9 +21,9 @@ class VectorSearchEngine(private val chunkDao: ChunkDao) {
         threshold: Float = 0.0f
     ): List<SearchResult> {
         val chunks = if (materialIds != null && materialIds.isNotEmpty()) {
-            chunkDao.getEmbeddedChunksByMaterials(materialIds)
+            chunkRepository.getEmbeddedChunksByMaterials(materialIds)
         } else {
-            chunkDao.getAllEmbeddedChunks()
+            chunkRepository.getAllEmbeddedChunks()
         }
 
         return chunks.mapNotNull { chunk ->
@@ -39,9 +39,7 @@ class VectorSearchEngine(private val chunkDao: ChunkDao) {
     companion object {
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             if (a.size != b.size) return 0f
-            var dot = 0f
-            var normA = 0f
-            var normB = 0f
+            var dot = 0f; var normA = 0f; var normB = 0f
             for (i in a.indices) {
                 dot += a[i] * b[i]
                 normA += a[i] * a[i]

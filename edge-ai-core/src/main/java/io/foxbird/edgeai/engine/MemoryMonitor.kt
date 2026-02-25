@@ -12,16 +12,26 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class MemoryPressure { NORMAL, MODERATE, CRITICAL }
 
 data class MemorySnapshot(
     val totalMb: Long,
+    /** Physical available RAM from /proc/meminfo MemAvailable — more accurate than ActivityManager */
     val availableMb: Long,
+    /** Swap total in MB — includes RAM Boost (virtual RAM) on Nothing Phone etc. */
+    val swapTotalMb: Long = 0L,
+    /** Swap free in MB */
+    val swapFreeMb: Long = 0L,
     val usedPercent: Float,
     val pressure: MemoryPressure,
     val isLowMemory: Boolean
-)
+) {
+    /** Effective available memory: physical available + swap free (conservative: swap at 50% weight due to speed) */
+    val effectiveAvailableMb: Long get() = availableMb + (swapFreeMb / 2)
+    val hasSwap: Boolean get() = swapTotalMb > 0L
+}
 
 class MemoryMonitor(private val context: Context) {
 
@@ -63,18 +73,47 @@ class MemoryMonitor(private val context: Context) {
     fun getSnapshot(): MemorySnapshot {
         val memInfo = ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(memInfo)
-        val totalMb = memInfo.totalMem / (1024 * 1024)
-        val availMb = memInfo.availMem / (1024 * 1024)
-        val usedPercent = 1f - (availMb.toFloat() / totalMb)
+        val totalMb = memInfo.totalMem / (1024L * 1024L)
+
+        val procInfo = readProcMeminfo()
+        // /proc/meminfo MemAvailable accounts for reclaimable caches — better than ActivityManager
+        val availMb = (procInfo["MemAvailable"] ?: memInfo.availMem) / (1024L * 1024L)
+        val swapTotalMb = (procInfo["SwapTotal"] ?: 0L) / (1024L * 1024L)
+        val swapFreeMb = (procInfo["SwapFree"] ?: 0L) / (1024L * 1024L)
+
+        val usedPercent = 1f - (availMb.toFloat() / totalMb.coerceAtLeast(1L))
         val pressure = when {
             usedPercent >= CRITICAL_THRESHOLD -> MemoryPressure.CRITICAL
             usedPercent >= MODERATE_THRESHOLD -> MemoryPressure.MODERATE
             else -> MemoryPressure.NORMAL
         }
-        return MemorySnapshot(totalMb, availMb, usedPercent, pressure, memInfo.lowMemory)
+        return MemorySnapshot(totalMb, availMb, swapTotalMb, swapFreeMb, usedPercent, pressure, memInfo.lowMemory)
+    }
+
+    /**
+     * Reads /proc/meminfo and returns values in bytes (converted from kB).
+     * Keys: MemTotal, MemFree, MemAvailable, SwapTotal, SwapFree, etc.
+     */
+    private fun readProcMeminfo(): Map<String, Long> {
+        val result = mutableMapOf<String, Long>()
+        try {
+            File("/proc/meminfo").bufferedReader().use { reader ->
+                reader.forEachLine { line ->
+                    val parts = line.trim().split("\\s+".toRegex())
+                    if (parts.size >= 2) {
+                        val key = parts[0].trimEnd(':')
+                        val kbValue = parts[1].toLongOrNull() ?: return@forEachLine
+                        result[key] = kbValue * 1024L
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.w(TAG, "Could not read /proc/meminfo: ${e.message}")
+        }
+        return result
     }
 
     fun canAllocateMb(requiredMb: Long): Boolean {
-        return getSnapshot().availableMb > requiredMb + 200
+        return getSnapshot().effectiveAvailableMb > requiredMb + 200
     }
 }

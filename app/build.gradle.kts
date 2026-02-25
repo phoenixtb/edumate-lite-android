@@ -108,8 +108,6 @@ dependencies {
     // PDF
     implementation(libs.pdfbox.android)
 
-    // Curved Bottom Navigation
-    implementation("np.com.susanthapa:curved_bottom_navigation:0.7.0")
 
     // Testing
     testImplementation(libs.junit)

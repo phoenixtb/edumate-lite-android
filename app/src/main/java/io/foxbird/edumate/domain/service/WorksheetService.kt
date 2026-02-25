@@ -6,7 +6,7 @@ import android.graphics.pdf.PdfDocument
 import io.foxbird.edgeai.engine.EngineOrchestrator
 import io.foxbird.edgeai.engine.GenerationParams
 import io.foxbird.edgeai.util.Logger
-import io.foxbird.edumate.domain.engine.RagEngine
+import io.foxbird.edumate.domain.engine.IRagEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -22,7 +22,7 @@ data class WorksheetConfig(
 
 class WorksheetService(
     private val context: Context,
-    private val ragEngine: RagEngine,
+    private val ragEngine: IRagEngine,
     private val orchestrator: EngineOrchestrator
 ) {
     companion object {
@@ -31,7 +31,7 @@ class WorksheetService(
 
     suspend fun generateWorksheet(config: WorksheetConfig): String? {
         val query = "Generate practice questions about the key topics"
-        val ragContext = ragEngine.retrieve(query, config.materialIds, topK = 5)
+        val ragContext = ragEngine.retrieve(query, config.materialIds, topK = 5, threshold = 0.0f)
 
         if (ragContext.contextText.isBlank()) {
             Logger.e(TAG, "No context available for worksheet")

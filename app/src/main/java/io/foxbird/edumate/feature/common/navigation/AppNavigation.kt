@@ -35,6 +35,7 @@ object NavRoutes {
     const val KNOWLEDGE_GRAPH = "knowledge_graph"
     const val WORKSHEET = "worksheet"
     const val DEV_TOOLS = "dev_tools"
+    const val MODEL_MANAGER = "model_manager"
 
     fun chatDetail(conversationId: Long) = "chat/$conversationId"
     fun materialDetail(materialId: Long) = "material/$materialId"

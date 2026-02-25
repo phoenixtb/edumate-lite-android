@@ -3,10 +3,11 @@ package io.foxbird.edumate.feature.materials
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.foxbird.edumate.data.local.dao.MaterialDao
 import io.foxbird.edumate.data.local.entity.MaterialEntity
+import io.foxbird.edumate.data.repository.MaterialRepository
 import io.foxbird.edumate.domain.service.MaterialProcessor
 import io.foxbird.edumate.domain.service.ProcessingEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,15 +26,17 @@ data class MaterialsUiState(
 )
 
 class MaterialsViewModel(
-    private val materialDao: MaterialDao,
-    private val materialProcessor: MaterialProcessor
+    private val materialRepository: MaterialRepository,
+    private val materialProcessor: MaterialProcessor,
+    /** Application-lifetime scope — processing survives navigation/ViewModel recreation. */
+    private val appScope: CoroutineScope
 ) : ViewModel() {
 
     private val refreshTrigger = MutableStateFlow(0)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val materials: StateFlow<List<MaterialEntity>> = refreshTrigger
-        .flatMapLatest { materialDao.getAllFlow() }
+        .flatMapLatest { materialRepository.getAllFlow() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _uiState = MutableStateFlow(MaterialsUiState())
@@ -52,10 +55,10 @@ class MaterialsViewModel(
     }
 
     fun addPdf(uri: Uri, title: String, subject: String? = null) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                showAddSheet = false, error = null, processingMaterialName = title
-            )
+        _uiState.value = _uiState.value.copy(
+            showAddSheet = false, error = null, processingMaterialName = title
+        )
+        appScope.launch {
             materialProcessor.processPdf(uri, title, subject).collect { event ->
                 handleProcessingEvent(event)
             }
@@ -63,10 +66,10 @@ class MaterialsViewModel(
     }
 
     fun addText(text: String, title: String, subject: String? = null) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                showAddSheet = false, error = null, processingMaterialName = title
-            )
+        _uiState.value = _uiState.value.copy(
+            showAddSheet = false, error = null, processingMaterialName = title
+        )
+        appScope.launch {
             materialProcessor.processText(text, title, subject).collect { event ->
                 handleProcessingEvent(event)
             }
@@ -75,7 +78,7 @@ class MaterialsViewModel(
 
     fun deleteMaterial(materialId: Long) {
         viewModelScope.launch {
-            materialDao.deleteById(materialId)
+            materialRepository.deleteById(materialId)
         }
     }
 

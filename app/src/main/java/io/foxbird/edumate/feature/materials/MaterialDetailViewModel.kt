@@ -2,11 +2,11 @@ package io.foxbird.edumate.feature.materials
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.foxbird.edumate.data.local.dao.ChunkDao
 import io.foxbird.edumate.data.local.dao.ConceptDao
-import io.foxbird.edumate.data.local.dao.MaterialDao
 import io.foxbird.edumate.data.local.entity.ConceptEntity
 import io.foxbird.edumate.data.local.entity.MaterialEntity
+import io.foxbird.edumate.data.repository.ChunkRepository
+import io.foxbird.edumate.data.repository.MaterialRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,8 +14,8 @@ import kotlinx.coroutines.launch
 
 class MaterialDetailViewModel(
     private val materialId: Long,
-    private val materialDao: MaterialDao,
-    private val chunkDao: ChunkDao,
+    private val materialRepository: MaterialRepository,
+    private val chunkRepository: ChunkRepository,
     private val conceptDao: ConceptDao
 ) : ViewModel() {
 
@@ -34,15 +34,15 @@ class MaterialDetailViewModel(
 
     private fun loadData() {
         viewModelScope.launch {
-            _material.value = materialDao.getById(materialId)
-            _chunkCount.value = chunkDao.getCountByMaterial(materialId)
+            _material.value = materialRepository.getById(materialId)
+            _chunkCount.value = chunkRepository.getCountByMaterial(materialId)
             _concepts.value = conceptDao.getByMaterialId(materialId)
         }
     }
 
     fun deleteMaterial() {
         viewModelScope.launch {
-            materialDao.deleteById(materialId)
+            materialRepository.deleteById(materialId)
         }
     }
 }

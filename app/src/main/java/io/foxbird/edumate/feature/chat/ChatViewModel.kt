@@ -3,7 +3,7 @@ package io.foxbird.edumate.feature.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.foxbird.edgeai.util.Logger
-import io.foxbird.edumate.domain.engine.RagEngine
+import io.foxbird.edumate.domain.engine.IRagEngine
 import io.foxbird.edumate.domain.engine.SearchResult
 import io.foxbird.edumate.domain.service.ConversationManager
 import kotlinx.coroutines.Job
@@ -33,7 +33,7 @@ data class ChatUiState(
 
 class ChatViewModel(
     private val conversationManager: ConversationManager,
-    private val ragEngine: RagEngine
+    private val ragEngine: IRagEngine
 ) : ViewModel() {
 
     companion object {
@@ -89,7 +89,12 @@ class ChatViewModel(
                 // RAG retrieval
                 val history = conversationManager.getConversationHistory(convId)
                 val materialIds = _uiState.value.materialFilterIds.ifEmpty { null }
-                val ragContext = ragEngine.retrieve(content, materialIds)
+                val ragContext = ragEngine.retrieve(
+                    query = content,
+                    materialIds = materialIds,
+                    topK = io.foxbird.edumate.core.util.AppConstants.RETRIEVAL_TOP_K,
+                    threshold = io.foxbird.edumate.core.util.AppConstants.SIMILARITY_THRESHOLD
+                )
 
                 // Stream generation
                 val streamingMsg = ChatMessage(
@@ -105,7 +110,9 @@ class ChatViewModel(
                 ragEngine.generateStream(
                     query = content,
                     context = ragContext,
-                    conversationHistory = history
+                    conversationHistory = history,
+                    maxTokens = io.foxbird.edumate.core.util.AppConstants.MAX_INFERENCE_TOKENS,
+                    temperature = io.foxbird.edumate.core.util.AppConstants.INFERENCE_TEMPERATURE
                 ).collect { token ->
                     responseBuilder.append(token)
                     val updatedMsg = streamingMsg.copy(content = responseBuilder.toString())

@@ -2,7 +2,7 @@ package io.foxbird.edumate.feature.worksheet
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.foxbird.edumate.data.local.dao.MaterialDao
+import io.foxbird.edumate.data.repository.MaterialRepository
 import io.foxbird.edumate.domain.service.WorksheetConfig
 import io.foxbird.edumate.domain.service.WorksheetService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +19,7 @@ data class WorksheetUiState(
 
 class WorksheetViewModel(
     private val worksheetService: WorksheetService,
-    private val materialDao: MaterialDao
+    private val materialRepository: MaterialRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WorksheetUiState())
@@ -29,7 +29,7 @@ class WorksheetViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isGenerating = true, error = null)
 
-            val materials = materialDao.getByStatus("completed")
+            val materials = materialRepository.getByStatus("completed")
             if (materials.isEmpty()) {
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
