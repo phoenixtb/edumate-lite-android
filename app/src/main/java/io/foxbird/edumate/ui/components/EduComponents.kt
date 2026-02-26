@@ -1,5 +1,6 @@
 package io.foxbird.edumate.ui.components
 
+import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -7,12 +8,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +39,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -44,12 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.foxbird.edumate.ui.theme.EduBlue
 import io.foxbird.edumate.ui.theme.EduPurple
 import io.foxbird.edumate.ui.theme.EduPurpleDark
 import io.foxbird.edumate.ui.theme.EduPurpleLight
-import io.foxbird.edumate.ui.theme.PipelineActive
 import io.foxbird.edumate.ui.theme.PipelineComplete
-import io.foxbird.edumate.ui.theme.PipelinePending
 
 /**
  * Full-width gradient header with brand color, used at top of Home and Library screens.
@@ -268,21 +270,23 @@ fun QuickActionCard(
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-        ),
-        modifier = modifier.clickable(onClick = onClick)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            IconContainer(
-                icon = icon,
-                containerColor = iconColor.copy(alpha = 0.15f),
-                iconColor = iconColor,
-                size = 44.dp,
-                iconSize = 22.dp
-            )
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Icon with subtle glow behind it
+            Box(contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(46.dp).background(iconColor.copy(alpha = 0.10f), RoundedCornerShape(13.dp)))
+                IconContainer(
+                    icon = icon,
+                    containerColor = iconColor.copy(alpha = 0.18f),
+                    iconColor = iconColor,
+                    size = 44.dp,
+                    iconSize = 22.dp
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,
@@ -305,8 +309,22 @@ fun QuickActionCard(
 enum class PipelineStepState { COMPLETED, ACTIVE, PENDING }
 
 /**
- * Pipeline step indicator used in processing cards.
- * Shows: checkmark (done), spinner (active), or number (pending).
+ * Maps a raw processing stage string to one of the four canonical step names.
+ * Shared by ProcessingCard, HomeScreen, and MaterialsScreen.
+ */
+fun deriveProcessingStep(stage: String): String {
+    val lower = stage.lowercase()
+    return when {
+        "embed" in lower || "generat" in lower -> "Embed"
+        "chunk" in lower                       -> "Chunk"
+        "extract" in lower || "read" in lower || "pars" in lower || "load" in lower -> "Extract"
+        "complete" in lower || "done" in lower || "finish" in lower -> "Done"
+        else -> "Extract"
+    }
+}
+
+/**
+ * Pipeline step indicator with pulsing glow on the active step.
  */
 @Composable
 fun PipelineStep(
@@ -315,71 +333,59 @@ fun PipelineStep(
     state: PipelineStepState,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "spin")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Restart),
-        label = "rotation"
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            tween(1100, easing = EaseInOut),
+            RepeatMode.Restart
+        ),
+        label = "pulseAlpha"
     )
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(
-                    when (state) {
-                        PipelineStepState.COMPLETED -> PipelineComplete
-                        PipelineStepState.ACTIVE -> PipelineActive
-                        PipelineStepState.PENDING -> PipelinePending.copy(alpha = 0.3f)
-                    }
-                )
-        ) {
-            when (state) {
-                PipelineStepState.COMPLETED -> Icon(
-                    Icons.Default.Check,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-                PipelineStepState.ACTIVE -> CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    color = Color.White,
+    val circleBg = when (state) {
+        PipelineStepState.COMPLETED -> PipelineComplete
+        PipelineStepState.ACTIVE    -> EduPurple
+        PipelineStepState.PENDING   -> MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    val labelColor = when (state) {
+        PipelineStepState.COMPLETED -> PipelineComplete
+        PipelineStepState.ACTIVE    -> EduPurpleLight
+        PipelineStepState.PENDING   -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        Box(contentAlignment = Alignment.Center) {
+            // Pulsing glow ring — only visible when ACTIVE
+            if (state == PipelineStepState.ACTIVE) {
+                Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .rotate(rotation)
+                        .size(42.dp)
+                        .background(EduPurple.copy(alpha = pulseAlpha * 0.5f), CircleShape)
                 )
-                PipelineStepState.PENDING -> Text(
-                    text = "$stepNumber",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White
-                )
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(28.dp).clip(CircleShape).background(circleBg)
+            ) {
+                when (state) {
+                    PipelineStepState.COMPLETED ->
+                        Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                    PipelineStepState.ACTIVE ->
+                        CircularProgressIndicator(strokeWidth = 2.dp, color = Color.White, modifier = Modifier.size(14.dp))
+                    PipelineStepState.PENDING ->
+                        Text("$stepNumber", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = when (state) {
-                PipelineStepState.ACTIVE -> MaterialTheme.colorScheme.primary
-                PipelineStepState.COMPLETED -> PipelineComplete
-                PipelineStepState.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
-            }
-        )
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = labelColor, maxLines = 1)
     }
 }
 
-private val ProcessingCardBg = Color(0xFF1A237E)
-private val ProcessingCardHeader = Color(0xFF283593)
-private val ProcessingAccent = Color(0xFF5C6BC0)
-
 /**
- * Processing progress card with pipeline steps — dark navy design.
+ * Processing progress card — surface-based, purple glow, gradient progress bar.
  */
 @Composable
 fun ProcessingCard(
@@ -396,146 +402,128 @@ fun ProcessingCard(
     val pct = (progress * 100).toInt()
 
     Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = ProcessingCardBg),
-        modifier = modifier.fillMaxWidth()
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(EduPurple.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
     ) {
-        Column {
-            // ── Header row ─────────────────────────────────────────────
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+        Box {
+            // Ambient purple glow at top
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(ProcessingCardHeader)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(ProcessingAccent)
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        color = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "Processing Materials",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        "$queueCount item${if (queueCount > 1) "s" else ""} in queue",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                }
-            }
+                    .height(110.dp)
+                    .background(Brush.verticalGradient(listOf(EduPurple.copy(alpha = 0.08f), Color.Transparent)))
+            )
 
-            // ── Detail body ─────────────────────────────────────────────
             Column(modifier = Modifier.padding(16.dp)) {
-                // Document name + percent badge
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                // ── Header ──────────────────────────────────────────
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.size(44.dp).background(EduPurple.copy(alpha = 0.18f), CircleShape))
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(36.dp).background(EduPurple.copy(alpha = 0.28f), CircleShape)
+                        ) {
+                            CircularProgressIndicator(strokeWidth = 2.dp, color = EduPurpleLight, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Processing Materials", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "$queueCount item${if (queueCount > 1) "s" else ""} in queue",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // ── Document name + % badge ─────────────────────────
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = materialName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(ProcessingAccent)
+                            .background(EduPurple.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
-                        Text(
-                            "$pct%",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                        Text("$pct%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = EduPurpleLight)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ── Pipeline steps with connector lines ─────────────
+                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+                    steps.forEachIndexed { index, label ->
+                        val stepState = when {
+                            index < currentStepIndex  -> PipelineStepState.COMPLETED
+                            index == currentStepIndex -> PipelineStepState.ACTIVE
+                            else                      -> PipelineStepState.PENDING
+                        }
+                        PipelineStep(label = label, stepNumber = index + 1, state = stepState, modifier = Modifier.weight(1f))
+                        if (index < steps.lastIndex) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 14.dp)
+                                    .height(2.dp)
+                                    .weight(0.4f)
+                                    .background(
+                                        if (index < currentStepIndex) PipelineComplete.copy(alpha = 0.7f)
+                                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        RoundedCornerShape(1.dp)
+                                    )
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Pipeline step row
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
+                // ── Status text ──────────────────────────────────────
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // ── Gradient progress bar ────────────────────────────
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 ) {
-                    steps.forEachIndexed { index, label ->
-                        PipelineStep(
-                            label = label,
-                            stepNumber = index + 1,
-                            state = when {
-                                index < currentStepIndex -> PipelineStepState.COMPLETED
-                                index == currentStepIndex -> PipelineStepState.ACTIVE
-                                else -> PipelineStepState.PENDING
-                            }
+                    val p = progress.coerceIn(0f, 1f)
+                    if (p > 0f) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(p).fillMaxHeight()
+                                .background(Brush.horizontalGradient(listOf(EduPurple, EduBlue)))
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Status text row
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = 0.07f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 1.5.dp,
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = Color(0xFF7986CB),
-                    trackColor = Color.White.copy(alpha = 0.15f),
-                    strokeCap = StrokeCap.Round,
-                )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "$pct%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.align(Alignment.End)
-                )
+                Text("$pct%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.End))
             }
         }
     }

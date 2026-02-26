@@ -8,6 +8,7 @@ import io.foxbird.doclibrary.data.repository.DocumentRepository
 import io.foxbird.doclibrary.domain.processor.IDocumentProcessor
 import io.foxbird.doclibrary.domain.processor.ProcessingEvent
 import io.foxbird.doclibrary.domain.processor.ProcessingMode
+import io.foxbird.doclibrary.domain.processor.ProcessingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,14 +56,8 @@ sealed class AddFlow {
 
 data class LibraryUiState(
     val addFlow: AddFlow = AddFlow.Idle,
-    val processingStage: String? = null,
-    val processingProgress: Pair<Int, Int>? = null,
-    val processingDocumentName: String? = null,
     val error: String? = null
-) {
-    val showAddSheet: Boolean get() = addFlow is AddFlow.Idle && error == null
-        // Sheet is controlled separately via showAddSheet flag below
-}
+)
 
 class LibraryViewModel(
     private val documentRepository: DocumentRepository,
@@ -79,6 +74,9 @@ class LibraryViewModel(
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+
+    /** Live processing state — same source as HomeViewModel, no duplication. */
+    val processingState: StateFlow<ProcessingState?> = documentProcessor.processingState
 
     private val _showAddSheet = MutableStateFlow(false)
     val showAddSheet: StateFlow<Boolean> = _showAddSheet.asStateFlow()
@@ -120,11 +118,7 @@ class LibraryViewModel(
     /** Called when user picks a processing mode. Kicks off actual processing. */
     fun confirmProcessing(mode: ProcessingMode) {
         val current = _uiState.value.addFlow as? AddFlow.Details ?: return
-        _uiState.value = _uiState.value.copy(
-            addFlow = AddFlow.Idle,
-            processingDocumentName = current.title,
-            error = null
-        )
+        _uiState.value = _uiState.value.copy(addFlow = AddFlow.Idle, error = null)
 
         appScope.launch {
             val flow = when (current.type) {
@@ -155,7 +149,7 @@ class LibraryViewModel(
     // ---------- Direct add (legacy / text path) ----------
 
     fun addText(text: String, title: String, subject: String? = null) {
-        _uiState.value = _uiState.value.copy(processingDocumentName = title, error = null)
+        _uiState.value = _uiState.value.copy(error = null)
         appScope.launch {
             documentProcessor.processText(text, title, subject).collect { event ->
                 handleProcessingEvent(event)
@@ -181,21 +175,9 @@ class LibraryViewModel(
 
     private fun handleProcessingEvent(event: ProcessingEvent) {
         when (event) {
-            is ProcessingEvent.Progress -> _uiState.value = _uiState.value.copy(
-                processingStage = event.stage,
-                processingProgress = event.current to event.total
-            )
-            is ProcessingEvent.Complete -> _uiState.value = _uiState.value.copy(
-                processingStage = null,
-                processingProgress = null,
-                processingDocumentName = null
-            )
-            is ProcessingEvent.Error -> _uiState.value = _uiState.value.copy(
-                processingStage = null,
-                processingProgress = null,
-                processingDocumentName = null,
-                error = event.message
-            )
+            is ProcessingEvent.Progress -> Unit
+            is ProcessingEvent.Complete -> refresh()
+            is ProcessingEvent.Error -> _uiState.value = _uiState.value.copy(error = event.message)
         }
     }
 }

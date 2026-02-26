@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.doclibrary.data.local.entity.DocumentEntity
 import io.foxbird.edumate.ui.components.ProcessingCard
+import io.foxbird.edumate.ui.components.deriveProcessingStep
 import io.foxbird.edumate.ui.components.QuickActionCard
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.theme.EduBlue
@@ -92,7 +93,7 @@ fun HomeScreen(
     val recentMaterials by viewModel.recentDocuments.collectAsStateWithLifecycle()
     val inferenceModelState by viewModel.inferenceModelState.collectAsStateWithLifecycle()
     val activeModelName by viewModel.activeModelName.collectAsStateWithLifecycle()
-    val processingDocuments by viewModel.processingDocuments.collectAsStateWithLifecycle()
+    val processingState by viewModel.processingState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.refreshStats() }
 
@@ -181,13 +182,12 @@ fun HomeScreen(
             }
 
             // ── Active processing card ─────────────────────────────────
-            if (processingDocuments.isNotEmpty()) {
+            processingState?.let { ps ->
                 ProcessingCard(
-                    materialName = processingDocuments.first().title,
-                    progress = 0f,
-                    currentStep = "Extract",
-                    statusText = "Processing in background…",
-                    queueCount = processingDocuments.size,
+                    materialName = ps.documentName,
+                    progress = ps.progress,
+                    currentStep = deriveProcessingStep(ps.stage),
+                    statusText = ps.stage,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)

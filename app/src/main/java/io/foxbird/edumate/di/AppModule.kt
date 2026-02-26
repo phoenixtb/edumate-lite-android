@@ -117,7 +117,8 @@ val viewModelModule = module {
             get<io.foxbird.doclibrary.data.repository.ChunkRepository>(),
             get<ConversationRepository>(),
             get(),
-            get()
+            get(),
+            get<io.foxbird.doclibrary.domain.processor.IDocumentProcessor>()
         )
     }
 }

@@ -19,6 +19,9 @@ import io.foxbird.edgeai.embedding.IEmbeddingService
 import io.foxbird.edgeai.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.encodeToString
@@ -46,8 +49,17 @@ class DocumentProcessor(
         private const val TAG = "DocumentProcessor"
     }
 
+    private val _processingState = MutableStateFlow<ProcessingState?>(null)
+    override val processingState: StateFlow<ProcessingState?> = _processingState.asStateFlow()
+
     private val converters = Converters()
     private val json = Json { ignoreUnknownKeys = true }
+
+    private fun pushProgress(title: String, stage: String, current: Int, total: Int) {
+        _processingState.value = ProcessingState(title, stage, current, total)
+    }
+
+    private fun clearProcessingState() { _processingState.value = null }
 
     override fun processPdf(
         uri: Uri,
@@ -65,6 +77,7 @@ class DocumentProcessor(
         val documentId = documentRepository.insert(document)
 
         try {
+            pushProgress(title, "Extracting text", 0, 1)
             emit(ProcessingEvent.Progress("Extracting text", 0, 1))
 
             val pages = mutableListOf<ExtractedPage>()
@@ -82,6 +95,7 @@ class DocumentProcessor(
 
             val allText = pages.joinToString("\n\n") { it.text }
             val chunkCount = processContent(documentId, pages, allText) { stage, current, total ->
+                pushProgress(title, stage, current, total)
                 emit(ProcessingEvent.Progress(stage, current, total))
             }
 
@@ -96,9 +110,11 @@ class DocumentProcessor(
                     keywordsJson = json.encodeToString(keywordExtractor.extractKeywords(allText))
                 )
             )
+            clearProcessingState()
             emit(ProcessingEvent.Complete(documentId, chunkCount))
         } catch (e: Exception) {
             Logger.e(TAG, "PDF processing failed", e)
+            clearProcessingState()
             documentRepository.updateStatus(documentId, "failed", e.message)
             emit(ProcessingEvent.Error(e.message ?: "Processing failed"))
         }
@@ -120,13 +136,13 @@ class DocumentProcessor(
         val documentId = documentRepository.insert(document)
 
         try {
+            pushProgress(title, "Loading images", 0, uris.size)
             emit(ProcessingEvent.Progress("Loading images", 0, uris.size))
 
             val pages = mutableListOf<ExtractedPage>()
             uris.forEachIndexed { index, uri ->
+                pushProgress(title, "Loading images", index + 1, uris.size)
                 emit(ProcessingEvent.Progress("Loading images", index + 1, uris.size))
-                // For MVP: each image becomes a placeholder page.
-                // THOROUGH mode will add OCR here in a future iteration.
                 pages.add(ExtractedPage(pageNumber = index + 1, text = "", extractionMethod = "image"))
                 pageDao.insert(
                     PageEntity(
@@ -142,6 +158,7 @@ class DocumentProcessor(
 
             val chunkCount = if (allText.isNotBlank()) {
                 processContent(documentId, pages, allText) { stage, current, total ->
+                    pushProgress(title, stage, current, total)
                     emit(ProcessingEvent.Progress(stage, current, total))
                 }
             } else 0
@@ -155,9 +172,11 @@ class DocumentProcessor(
                     pageCount = uris.size
                 )
             )
+            clearProcessingState()
             emit(ProcessingEvent.Complete(documentId, chunkCount))
         } catch (e: Exception) {
             Logger.e(TAG, "Image processing failed", e)
+            clearProcessingState()
             documentRepository.updateStatus(documentId, "failed", e.message)
             emit(ProcessingEvent.Error(e.message ?: "Image processing failed"))
         }
@@ -178,6 +197,7 @@ class DocumentProcessor(
         try {
             val page = textAdapter.extractText(text)
             val chunkCount = processContent(documentId, listOf(page), text) { stage, current, total ->
+                pushProgress(title, stage, current, total)
                 emit(ProcessingEvent.Progress(stage, current, total))
             }
 
@@ -192,9 +212,11 @@ class DocumentProcessor(
                     keywordsJson = json.encodeToString(keywordExtractor.extractKeywords(text))
                 )
             )
+            clearProcessingState()
             emit(ProcessingEvent.Complete(documentId, chunkCount))
         } catch (e: Exception) {
             Logger.e(TAG, "Text processing failed", e)
+            clearProcessingState()
             documentRepository.updateStatus(documentId, "failed", e.message)
             emit(ProcessingEvent.Error(e.message ?: "Processing failed"))
         }

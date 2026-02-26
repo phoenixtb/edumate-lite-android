@@ -6,6 +6,8 @@ import io.foxbird.doclibrary.data.local.entity.DocumentEntity
 import io.foxbird.doclibrary.data.repository.ChunkRepository
 import io.foxbird.doclibrary.data.repository.DocumentRepository
 import io.foxbird.doclibrary.data.local.dao.ConceptDao
+import io.foxbird.doclibrary.domain.processor.IDocumentProcessor
+import io.foxbird.doclibrary.domain.processor.ProcessingState
 import io.foxbird.edgeai.engine.ModelManager
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.edumate.core.model.AppModelConfigs
@@ -31,7 +33,8 @@ class HomeViewModel(
     private val chunkRepository: ChunkRepository,
     private val conversationRepository: ConversationRepository,
     private val conceptDao: ConceptDao,
-    private val modelManager: ModelManager
+    private val modelManager: ModelManager,
+    private val documentProcessor: IDocumentProcessor
 ) : ViewModel() {
 
     private val _stats = MutableStateFlow(HomeStats())
@@ -40,8 +43,8 @@ class HomeViewModel(
     private val _recentDocuments = MutableStateFlow<List<DocumentEntity>>(emptyList())
     val recentDocuments: StateFlow<List<DocumentEntity>> = _recentDocuments.asStateFlow()
 
-    private val _processingDocuments = MutableStateFlow<List<DocumentEntity>>(emptyList())
-    val processingDocuments: StateFlow<List<DocumentEntity>> = _processingDocuments.asStateFlow()
+    /** Single source of truth — same StateFlow as LibraryViewModel reads. */
+    val processingState: StateFlow<ProcessingState?> = documentProcessor.processingState
 
     val inferenceModelState: StateFlow<ModelState> = modelManager.modelStates
         .map { states -> states[AppModelConfigs.GEMMA_3N_E2B_LITERT.id] ?: ModelState.NotDownloaded }
@@ -63,7 +66,6 @@ class HomeViewModel(
                 conceptCount = conceptDao.getDisplayableCount()
             )
             _recentDocuments.value = documentRepository.getRecent(5)
-            _processingDocuments.value = documentRepository.getByStatus("processing")
         }
     }
 }

@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -44,6 +43,7 @@ import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -86,6 +86,8 @@ import io.foxbird.doclibrary.viewmodel.SourceType
 import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.ProcessingCard
 import io.foxbird.edumate.ui.components.SectionHeader
+import io.foxbird.edumate.ui.components.deriveProcessingStep
+import io.foxbird.edumate.ui.theme.EduAmber
 import io.foxbird.edumate.ui.theme.EduPurple
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
@@ -103,6 +105,7 @@ fun MaterialsScreen(
     val documents by viewModel.documents.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val showAddSheet by viewModel.showAddSheet.collectAsStateWithLifecycle()
+    val processingState by viewModel.processingState.collectAsStateWithLifecycle()
 
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -154,16 +157,13 @@ fun MaterialsScreen(
                 AddMaterialBanner(onClick = { viewModel.openAddSheet() })
             }
 
-            uiState.processingStage?.let { stage ->
+            processingState?.let { ps ->
                 item {
-                    val progress = uiState.processingProgress?.let { (current, total) ->
-                        if (total > 0) current.toFloat() / total else 0f
-                    } ?: 0f
                     ProcessingCard(
-                        materialName = uiState.processingDocumentName ?: "Document",
-                        progress = progress,
-                        currentStep = deriveCurrentStep(stage),
-                        statusText = stage,
+                        materialName = ps.documentName,
+                        progress = ps.progress,
+                        currentStep = deriveProcessingStep(ps.stage),
+                        statusText = ps.stage,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
@@ -189,7 +189,7 @@ fun MaterialsScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
-            } else if (uiState.processingStage == null) {
+            } else if (processingState == null) {
                 item {
                     EmptyMaterialsState(
                         modifier = Modifier.fillParentMaxHeight(0.6f).fillMaxWidth()
@@ -250,17 +250,6 @@ fun MaterialsScreen(
     }
 }
 
-private fun deriveCurrentStep(stage: String): String {
-    val lower = stage.lowercase()
-    return when {
-        "embed" in lower -> "Embed"
-        "chunk" in lower -> "Chunk"
-        "extract" in lower || "read" in lower || "pars" in lower -> "Extract"
-        "complete" in lower || "done" in lower || "finish" in lower -> "Done"
-        else -> "Extract"
-    }
-}
-
 private fun formatDate(timestamp: Long?): String {
     if (timestamp == null) return ""
     return SimpleDateFormat("M/d", Locale.getDefault()).format(Date(timestamp))
@@ -270,41 +259,45 @@ private fun formatDate(timestamp: Long?): String {
 
 @Composable
 private fun AddMaterialBanner(onClick: () -> Unit) {
+    val gradient = androidx.compose.ui.graphics.Brush.linearGradient(
+        colors = listOf(Color(0xFF1A0E50), Color(0xFF2D1F90))
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.horizontalGradient(listOf(Color(0xFF3949AB), Color(0xFF1565C0)))
-            )
+            .clip(RoundedCornerShape(18.dp))
+            .background(gradient)
             .clickable(onClick = onClick)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
-            ) {
-                Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(24.dp))
+        // Subtle glow overlay at top
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(EduPurple.copy(alpha = 0.15f), Color.Transparent)
+                    )
+                )
+        )
+        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Icon with glow halo
+            Box(contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(Color(0xFF3D2AB5))
+                ) {
+                    Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                }
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Add New Material",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    "PDF, Image, or Camera",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
+                Text("Add New Material", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("PDF, Image, or Camera", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Color.White)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Color.White.copy(alpha = 0.7f))
         }
     }
 }
@@ -330,7 +323,7 @@ private fun DocumentListCard(
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val (icon, iconColor) = documentTypeIcon(document.sourceType)
-            IconContainer(icon = icon, containerColor = iconColor.copy(alpha = 0.15f), iconColor = iconColor)
+            IconContainer(icon = icon, containerColor = iconColor.copy(alpha = 0.25f), iconColor = iconColor)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(document.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -429,65 +422,71 @@ private fun AddMaterialSheet(
     onCameraClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
         // Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(listOf(Color(0xFF3949AB), Color(0xFF1565C0)))
-                )
-                .padding(horizontal = 24.dp, vertical = 20.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
             Column {
                 Text(
                     "Add Study Material",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Choose a source to get started",
+                    "Choose a source to upload",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SheetOption(
-                icon = Icons.Filled.PictureAsPdf,
-                iconColor = Color(0xFFEF5350),
-                containerColor = Color(0xFFEF5350).copy(alpha = 0.12f),
-                title = "PDF Document",
-                subtitle = "Upload textbooks, notes, or worksheets",
-                onClick = onPdfClick
-            )
-            SheetOption(
-                icon = Icons.Filled.Image,
-                iconColor = Color(0xFF42A5F5),
-                containerColor = Color(0xFF42A5F5).copy(alpha = 0.12f),
-                title = "From Gallery",
-                subtitle = "Select images of study materials",
-                onClick = onGalleryClick
-            )
-            SheetOption(
-                icon = Icons.Filled.CameraAlt,
-                iconColor = Color(0xFF4CAF50),
-                containerColor = Color(0xFF4CAF50).copy(alpha = 0.12f),
-                title = "Take Photo",
-                subtitle = "Capture pages with your camera",
-                onClick = onCameraClick
-            )
+        HorizontalDivider()
 
-            Spacer(Modifier.height(4.dp))
-            TextButton(modifier = Modifier.fillMaxWidth(), onClick = onDismiss) {
-                Text("Cancel")
-            }
-            Spacer(Modifier.height(8.dp))
+        SheetOption(
+            icon = Icons.Filled.PictureAsPdf,
+            iconColor = Color(0xFFEF5350),
+            containerColor = Color(0xFFEF5350).copy(alpha = 0.15f),
+            title = "PDF Document",
+            subtitle = "Upload textbooks, notes, or worksheets",
+            onClick = onPdfClick
+        )
+        SheetOption(
+            icon = Icons.Filled.Image,
+            iconColor = Color(0xFF42A5F5),
+            containerColor = Color(0xFF42A5F5).copy(alpha = 0.15f),
+            title = "From Gallery",
+            subtitle = "Select images of study materials",
+            onClick = onGalleryClick
+        )
+        SheetOption(
+            icon = Icons.Filled.CameraAlt,
+            iconColor = EduAmber,
+            containerColor = EduAmber.copy(alpha = 0.15f),
+            title = "Take Photo",
+            subtitle = "Capture pages with your camera",
+            onClick = onCameraClick
+        )
+
+        Spacer(Modifier.height(8.dp))
+        TextButton(modifier = Modifier.fillMaxWidth(), onClick = onDismiss) {
+            Text("Cancel")
         }
     }
 }
@@ -495,8 +494,8 @@ private fun AddMaterialSheet(
 @Composable
 private fun SheetOption(
     icon: ImageVector,
-    iconColor: Color = MaterialTheme.colorScheme.primary,
-    containerColor: Color = iconColor.copy(alpha = 0.12f),
+    iconColor: Color,
+    containerColor: Color,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -504,10 +503,8 @@ private fun SheetOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

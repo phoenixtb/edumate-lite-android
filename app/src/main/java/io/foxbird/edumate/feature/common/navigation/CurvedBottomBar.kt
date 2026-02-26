@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -52,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.foxbird.edumate.ui.theme.EduPurple
 import io.foxbird.edumate.ui.theme.EduPurpleLight
-import io.foxbird.edumate.ui.theme.EduSurfaceVariantDark
 
 private val NAV_BAR_HEIGHT = 64.dp
 private val FAB_SIZE = 56.dp
@@ -78,7 +78,7 @@ fun CurvedBottomBar(
                     .fillMaxWidth()
                     .height(NAV_BAR_HEIGHT)
                     .clip(BottomNavShape(cornerRadiusPx, dockRadiusPx))
-                    .background(EduSurfaceVariantDark)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT),
