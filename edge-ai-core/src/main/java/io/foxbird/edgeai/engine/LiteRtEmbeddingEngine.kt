@@ -2,33 +2,26 @@ package io.foxbird.edgeai.engine
 
 import arrow.core.left
 import arrow.core.right
-import com.google.ai.edge.litert.Accelerator
-import com.google.ai.edge.litert.CompiledModel
-import io.foxbird.edgeai.tokenizer.SentencePieceTokenizer
-import io.foxbird.edgeai.tokenizer.Tokenizer
+import com.google.ai.edge.localagents.rag.models.EmbedData
+import com.google.ai.edge.localagents.rag.models.EmbeddingRequest
+import com.google.ai.edge.localagents.rag.models.GemmaEmbeddingModel
 import io.foxbird.edgeai.util.AppError
 import io.foxbird.edgeai.util.AppResult
 import io.foxbird.edgeai.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 import kotlin.math.sqrt
 
 /**
- * [EmbeddingEngine] backed by LiteRT [CompiledModel] for `.tflite` embedding models.
- * Hardware-accelerated with GPU/CPU acceleration.
+ * [EmbeddingEngine] backed by Google's [GemmaEmbeddingModel] from the AI Edge LocalAgents RAG SDK.
  *
- * Tokenization: Uses [SentencePieceTokenizer] when a `tokenizerPath` is supplied.
- * EmbeddingGemma expects two Int32 input tensors:
- *   - input_ids:      [1, seq_len] — SentencePiece token IDs
- *   - attention_mask: [1, seq_len] — 1 for real tokens, 0 for padding
- * Output: Float32 tensor [1, embedding_dim] (1024 for EmbeddingGemma 300M).
+ * Delegates tokenization (SentencePiece) to the native `gemma_embedding_model_jni` library —
+ * no external tokenizer library needed. Requires both the `.tflite` model and `sentencepiece.model`.
  */
 class LiteRtEmbeddingEngine : EmbeddingEngine {
 
     companion object {
         private const val TAG = "LiteRtEmbeddingEngine"
-        private const val DEFAULT_EMBEDDING_DIM = 1024
     }
 
     override val engineType = EngineType.LITE_RT
@@ -37,45 +30,39 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
     override var lastLoadError: String? = null
         private set
 
-    private var compiledModel: CompiledModel? = null
-    private var tokenizer: Tokenizer? = null
-    private var contextSize: Int = 2048
+    private var gemmaEmbedder: GemmaEmbeddingModel? = null
+    private var embeddingDim: Int = 0
     private var loaded = false
 
     override suspend fun loadModel(
         modelPath: String,
         contextSize: Int,
-        tokenizerPath: String? = null
+        tokenizerPath: String?
     ): Boolean = withContext(Dispatchers.IO) {
         lastLoadError = null
+
+        if (tokenizerPath == null) {
+            lastLoadError = "GemmaEmbeddingModel requires a sentencepiece.model path"
+            return@withContext false
+        }
+
         try {
-            val file = File(modelPath)
-            if (!file.exists()) {
-                lastLoadError = "Embedding model file not found: $modelPath"
+            val modelFile = java.io.File(modelPath)
+            val tokFile = java.io.File(tokenizerPath)
+
+            if (!modelFile.exists()) {
+                lastLoadError = "Embedding model not found: $modelPath"
+                return@withContext false
+            }
+            if (!tokFile.exists()) {
+                lastLoadError = "SentencePiece tokenizer not found: $tokenizerPath"
                 return@withContext false
             }
 
-            this@LiteRtEmbeddingEngine.contextSize = contextSize
-
-            // Load tokenizer before model so any tokenizer errors fail fast
-            if (tokenizerPath != null) {
-                val tokenizerFile = File(tokenizerPath)
-                if (!tokenizerFile.exists()) {
-                    lastLoadError = "Tokenizer file not found: $tokenizerPath"
-                    return@withContext false
-                }
-                tokenizer?.close()
-                tokenizer = SentencePieceTokenizer(tokenizerPath)
-                Logger.i(TAG, "Tokenizer loaded: $tokenizerPath")
-            } else {
-                Logger.w(TAG, "No tokenizerPath provided — embedding quality will be degraded")
-            }
-
-            val model = CompiledModel.create(modelPath, CompiledModel.Options(Accelerator.CPU))
-            compiledModel = model
+            gemmaEmbedder = null
+            gemmaEmbedder = GemmaEmbeddingModel(modelPath, tokenizerPath, /* useGpu= */ false)
             loaded = true
-            lastLoadError = null
-            Logger.i(TAG, "LiteRT embedding model loaded: $modelPath")
+            Logger.i(TAG, "GemmaEmbeddingModel loaded: $modelPath")
             true
         } catch (e: Exception) {
             lastLoadError = e.message ?: e.toString()
@@ -85,64 +72,85 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
     }
 
     override fun unloadModel() {
-        try { compiledModel?.close() } catch (e: Exception) { Logger.e(TAG, "Error unloading embedding model", e) }
-        compiledModel = null
-        tokenizer?.close()
-        tokenizer = null
+        gemmaEmbedder = null
         loaded = false
+        embeddingDim = 0
         lastLoadError = null
     }
 
     override fun isModelLoaded(): Boolean = loaded
 
     override suspend fun embed(text: String): AppResult<FloatArray> = withContext(Dispatchers.IO) {
-        val model = compiledModel
-            ?: return@withContext AppError.Llm.GenerationFailed("LiteRT embedding model not loaded").left()
+        embedRaw(text)
+    }
 
-        try {
-            val inputBuffers = model.createInputBuffers()
-            val outputBuffers = model.createOutputBuffers()
-
-            val tok = tokenizer
-            if (tok != null) {
-                // Proper SentencePiece tokenization: encode text → Int32 token IDs
-                val tokenIds = tok.encode(text, contextSize)
-                val paddedIds = IntArray(contextSize) { if (it < tokenIds.size) tokenIds[it] else 0 }
-                val attentionMask = tok.attentionMask(tokenIds.size, contextSize)
-
-                // Write Int32 tensors (not Float — this was the critical bug in the old code)
-                inputBuffers[0].writeInt(paddedIds)
-                inputBuffers[1].writeInt(attentionMask)
-            } else {
-                // Fallback: char-frequency hash tokenizer — low quality but functional structure
-                // The model will still produce a float output; quality improves with real tokenizer
-                Logger.w(TAG, "No tokenizer loaded, using character-hash fallback")
-                val charIds = text.lowercase().chunked(3).map { chunk ->
-                    (chunk.fold(0) { acc, c -> acc * 31 + c.code } and 0x7FFF) + 1
-                }.take(contextSize)
-                val paddedIds = IntArray(contextSize) { if (it < charIds.size) charIds[it] else 0 }
-                val attentionMask = IntArray(contextSize) { if (it < charIds.size) 1 else 0 }
-                inputBuffers[0].writeInt(paddedIds)
-                inputBuffers[1].writeInt(attentionMask)
-            }
-
-            model.run(inputBuffers, outputBuffers)
-
-            val rawEmbedding = outputBuffers[0].readFloat()
-
-            // L2-normalise: cosine similarity = dot product for unit vectors
-            val norm = sqrt(rawEmbedding.fold(0.0) { acc, v -> acc + v.toDouble() * v }.toFloat())
-            val embedding = if (norm > 0f) FloatArray(rawEmbedding.size) { rawEmbedding[it] / norm }
-                           else rawEmbedding
-
-            embedding.right()
+    /** Single-text embedding: one model call, returns normalised FloatArray. */
+    private fun embedRaw(text: String): AppResult<FloatArray> {
+        val embedder = gemmaEmbedder
+            ?: return AppError.Llm.GenerationFailed("Embedding model not loaded").left()
+        return try {
+            val request = EmbeddingRequest.create(
+                listOf(EmbedData.create(text, EmbedData.TaskType.RETRIEVAL_DOCUMENT))
+            )
+            val rawList = embedder.getEmbeddings(request).get()
+            normalise(FloatArray(rawList.size) { rawList[it] }).right()
         } catch (e: Exception) {
             Logger.e(TAG, "Embedding failed", e)
             AppError.Llm.GenerationFailed(e.message ?: "Embedding error").left()
         }
     }
 
-    override fun getEmbeddingDimension(): Int = if (loaded) DEFAULT_EMBEDDING_DIM else 0
+    /**
+     * Batch embedding: sends [texts] in a single [EmbeddingRequest] call.
+     * GemmaEmbeddingModel returns a flat [List<Float>] — split by [embeddingDim].
+     * Falls back to sequential if the batch response size is unexpected.
+     */
+    override suspend fun embedBatch(texts: List<String>): AppResult<List<FloatArray>> =
+        withContext(Dispatchers.IO) { doBatchEmbed(texts) }
+
+    /** Pure, non-suspending batch implementation — keeps return-type inference clean. */
+    private fun doBatchEmbed(texts: List<String>): AppResult<List<FloatArray>> {
+        val embedder = gemmaEmbedder
+            ?: return AppError.Llm.GenerationFailed("Embedding model not loaded").left()
+        if (texts.isEmpty()) return emptyList<FloatArray>().right()
+
+        return try {
+            val embedDataList = texts.map {
+                EmbedData.create(it, EmbedData.TaskType.RETRIEVAL_DOCUMENT)
+            }
+            val request = EmbeddingRequest.create(embedDataList)
+            val flatList = embedder.getEmbeddings(request).get()
+
+            // Infer dim: use cached value or divide evenly
+            val dim = if (embeddingDim > 0) embeddingDim
+                      else if (flatList.size % texts.size == 0) flatList.size / texts.size
+                      else 0
+
+            if (dim == 0 || flatList.size != dim * texts.size) {
+                Logger.w(TAG, "Unexpected batch response size ${flatList.size} for ${texts.size} texts — falling back to sequential")
+                sequentialFallback(texts).right()
+            } else {
+                embeddingDim = dim
+                texts.indices.map { idx ->
+                    normalise(FloatArray(dim) { flatList[idx * dim + it] })
+                }.right()
+            }
+        } catch (e: Exception) {
+            Logger.e(TAG, "Batch embedding failed, retrying sequentially", e)
+            sequentialFallback(texts).right()
+        }
+    }
+
+    private fun sequentialFallback(texts: List<String>): List<FloatArray> =
+        texts.map { text -> embedRaw(text).fold(ifLeft = { FloatArray(0) }, ifRight = { it }) }
+
+    private fun normalise(v: FloatArray): FloatArray {
+        if (embeddingDim == 0) embeddingDim = v.size
+        val norm = sqrt(v.fold(0.0) { acc, f -> acc + f.toDouble() * f }.toFloat())
+        return if (norm > 0f) FloatArray(v.size) { v[it] / norm } else v
+    }
+
+    override fun getEmbeddingDimension(): Int = embeddingDim
 
     override fun destroy() { unloadModel() }
 }

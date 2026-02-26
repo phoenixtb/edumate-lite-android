@@ -29,7 +29,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.foxbird.edumate.data.local.entity.ConceptEntity
+import io.foxbird.doclibrary.data.local.entity.ConceptEntity
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.cos
 import kotlin.math.sin

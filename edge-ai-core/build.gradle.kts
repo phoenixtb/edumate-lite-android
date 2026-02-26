@@ -32,8 +32,10 @@ dependencies {
     api(libs.litert.core)
     api(libs.litert.lm)
 
-    // TFLite Support — provides SentencePiece JNI tokenizer for embedding models
-    implementation(libs.tensorflow.lite.support)
+    // Google AI Edge LocalAgents RAG SDK (GemmaEmbeddingModel — native SentencePiece tokenization)
+    implementation(libs.localagents.rag)
+    implementation(libs.mediapipe.tasks.genai)
+
 
     // Arrow (functional error handling)
     api(libs.arrow.core)

@@ -2,7 +2,7 @@ package io.foxbird.edumate.feature.worksheet
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.foxbird.edumate.data.repository.MaterialRepository
+import io.foxbird.doclibrary.data.repository.DocumentRepository
 import io.foxbird.edumate.domain.service.WorksheetConfig
 import io.foxbird.edumate.domain.service.WorksheetService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +19,7 @@ data class WorksheetUiState(
 
 class WorksheetViewModel(
     private val worksheetService: WorksheetService,
-    private val materialRepository: MaterialRepository
+    private val documentRepository: DocumentRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WorksheetUiState())
@@ -29,18 +29,18 @@ class WorksheetViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isGenerating = true, error = null)
 
-            val materials = materialRepository.getByStatus("completed")
-            if (materials.isEmpty()) {
+            val documents = documentRepository.getByStatus("completed")
+            if (documents.isEmpty()) {
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
-                    error = "No completed materials available"
+                    error = "No completed study materials available"
                 )
                 return@launch
             }
 
             val config = WorksheetConfig(
                 title = title,
-                materialIds = materials.map { it.id },
+                materialIds = documents.map { it.id },
                 numQuestions = numQuestions
             )
 
@@ -64,7 +64,5 @@ class WorksheetViewModel(
         }
     }
 
-    fun reset() {
-        _uiState.value = WorksheetUiState()
-    }
+    fun reset() { _uiState.value = WorksheetUiState() }
 }

@@ -2,8 +2,8 @@ package io.foxbird.edumate.feature.knowledge
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.foxbird.edumate.data.local.dao.ConceptDao
-import io.foxbird.edumate.data.local.entity.ConceptEntity
+import io.foxbird.doclibrary.data.local.dao.ConceptDao
+import io.foxbird.doclibrary.data.local.entity.ConceptEntity
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn

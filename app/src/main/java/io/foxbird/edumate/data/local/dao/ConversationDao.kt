@@ -25,8 +25,8 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
     suspend fun getAll(): List<ConversationEntity>
 
-    @Query("SELECT * FROM conversations WHERE material_id = :materialId ORDER BY updated_at DESC")
-    suspend fun getByMaterialId(materialId: Long): List<ConversationEntity>
+    @Query("SELECT * FROM conversations WHERE document_id = :documentId ORDER BY updated_at DESC")
+    suspend fun getByDocumentId(documentId: Long): List<ConversationEntity>
 
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun deleteById(id: Long)

@@ -53,6 +53,9 @@ android {
 }
 
 dependencies {
+    // Doc Library (document ingestion, RAG, library UI ViewModels)
+    implementation(project(":doc-library"))
+
     // Edge AI Core (engines, model management, orchestration)
     implementation(project(":edge-ai-core"))
 

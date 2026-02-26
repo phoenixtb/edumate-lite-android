@@ -6,7 +6,7 @@ import android.graphics.pdf.PdfDocument
 import io.foxbird.edgeai.engine.EngineOrchestrator
 import io.foxbird.edgeai.engine.GenerationParams
 import io.foxbird.edgeai.util.Logger
-import io.foxbird.edumate.domain.engine.IRagEngine
+import io.foxbird.doclibrary.domain.rag.IRagEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File

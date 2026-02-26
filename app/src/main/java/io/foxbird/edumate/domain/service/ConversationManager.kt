@@ -26,10 +26,10 @@ class ConversationManager(
     fun getMessages(conversationId: Long): Flow<List<MessageEntity>> =
         messageRepository.getByConversationFlow(conversationId)
 
-    suspend fun createConversation(title: String = "New Chat", materialId: Long? = null): Long {
+    suspend fun createConversation(title: String = "New Chat", documentId: Long? = null): Long {
         val now = System.currentTimeMillis()
         return conversationRepository.insert(
-            ConversationEntity(title = title, materialId = materialId, createdAt = now, updatedAt = now)
+            ConversationEntity(title = title, documentId = documentId, createdAt = now, updatedAt = now)
         )
     }
 

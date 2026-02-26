@@ -66,7 +66,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.foxbird.edgeai.model.ModelState
-import io.foxbird.edumate.data.local.entity.MaterialEntity
+import io.foxbird.doclibrary.data.local.entity.DocumentEntity
+import io.foxbird.edumate.ui.components.ProcessingCard
 import io.foxbird.edumate.ui.components.QuickActionCard
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.theme.EduBlue
@@ -88,9 +89,10 @@ fun HomeScreen(
     onNavigateToModelManager: () -> Unit = {}
 ) {
     val stats by viewModel.stats.collectAsStateWithLifecycle()
-    val recentMaterials by viewModel.recentMaterials.collectAsStateWithLifecycle()
+    val recentMaterials by viewModel.recentDocuments.collectAsStateWithLifecycle()
     val inferenceModelState by viewModel.inferenceModelState.collectAsStateWithLifecycle()
     val activeModelName by viewModel.activeModelName.collectAsStateWithLifecycle()
+    val processingDocuments by viewModel.processingDocuments.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.refreshStats() }
 
@@ -160,7 +162,7 @@ fun HomeScreen(
 
             // ── AI Status Card (conditional — hidden when model ready + materials present) ──
             val isModelReady = inferenceModelState is ModelState.Ready
-            val hasMaterials = stats.completedMaterials > 0
+            val hasMaterials = stats.completedDocuments > 0
             val showAiCard = !isModelReady || !hasMaterials
 
             if (showAiCard) {
@@ -178,10 +180,25 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            // ── Active processing card ─────────────────────────────────
+            if (processingDocuments.isNotEmpty()) {
+                ProcessingCard(
+                    materialName = processingDocuments.first().title,
+                    progress = 0f,
+                    currentStep = "Extract",
+                    statusText = "Processing in background…",
+                    queueCount = processingDocuments.size,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // ── Stats Strip (when ready + materials) ──────────────────
             if (isModelReady && hasMaterials) {
                 StatsStrip(
-                    materials = stats.completedMaterials,
+                    materials = stats.completedDocuments,
                     chunks = stats.chunkCount,
                     sessions = stats.conversationCount,
                     modifier = Modifier
@@ -292,7 +309,7 @@ private fun AiStatusCard(
     val isModelLoading = modelState is ModelState.Loading
     val isModelFailed = modelState is ModelState.LoadFailed
     val isModelNotLoaded = !isModelReady && !isModelLoading && !isModelFailed
-    val hasMaterials = stats.completedMaterials > 0
+    val hasMaterials = stats.completedDocuments > 0
 
     val bgColor by animateColorAsState(
         targetValue = when {
@@ -367,9 +384,9 @@ private fun AiStatusCard(
                         text = when {
                             isModelLoading -> "Loading ${activeModelName ?: "AI model"} — hang tight!"
                             isModelReady && hasMaterials ->
-                                "${stats.completedMaterials} material${if (stats.completedMaterials > 1) "s" else ""} · ${stats.chunkCount} chunks indexed"
+                                "${stats.completedDocuments} material${if (stats.completedDocuments > 1) "s" else ""} · ${stats.chunkCount} chunks indexed"
                             isModelReady -> "Add your study materials to get started"
-                            isModelFailed -> (modelState as ModelState.LoadFailed).error
+                            isModelFailed -> modelState.error
                             else -> "Your AI tutor isn't loaded yet"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -488,7 +505,7 @@ private fun StatItem(
 
 @Composable
 private fun RecentMaterialCard(
-    material: MaterialEntity,
+    material: DocumentEntity,
     onClick: () -> Unit
 ) {
     val typeIcon = when (material.sourceType.lowercase()) {

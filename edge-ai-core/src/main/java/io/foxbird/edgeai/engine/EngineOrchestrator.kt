@@ -187,6 +187,12 @@ class EngineOrchestrator(
         return engine.embed(text)
     }
 
+    suspend fun embedBatch(texts: List<String>): AppResult<List<FloatArray>> {
+        val engine = _activeEmbeddingEngine.value?.let { embeddingEngines[it] }
+            ?: return AppError.Llm.GenerationFailed("No embedding model loaded").left()
+        return engine.embedBatch(texts)
+    }
+
     fun tokenCount(text: String): Int {
         return _activeInferenceEngine.value?.let { generationEngines[it]?.tokenCount(text) }
             ?: (text.length * 0.3).toInt().coerceAtLeast(1)

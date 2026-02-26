@@ -69,14 +69,14 @@ import io.foxbird.edgeai.engine.EngineOrchestrator
 import io.foxbird.edgeai.engine.ModelManager
 import io.foxbird.edgeai.model.ModelDownloader
 import io.foxbird.edgeai.util.DeviceInfo
-import io.foxbird.edumate.data.local.dao.ChunkDao
+import io.foxbird.doclibrary.data.local.dao.ChunkDao
+import io.foxbird.doclibrary.data.local.dao.DocumentDao
+import io.foxbird.doclibrary.data.local.entity.ChunkEntity
+import io.foxbird.doclibrary.data.local.entity.DocumentEntity
+import io.foxbird.doclibrary.domain.task.AiTask
+import io.foxbird.doclibrary.domain.task.TaskQueue
+import io.foxbird.doclibrary.domain.task.TaskStatus
 import io.foxbird.edumate.data.local.dao.ConversationDao
-import io.foxbird.edumate.data.local.dao.MaterialDao
-import io.foxbird.edumate.data.local.entity.ChunkEntity
-import io.foxbird.edumate.data.local.entity.MaterialEntity
-import io.foxbird.edumate.domain.service.AiTask
-import io.foxbird.edumate.domain.service.TaskQueue
-import io.foxbird.edumate.domain.service.TaskStatus
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.components.StatusChip
 import io.foxbird.edumate.ui.components.StorageBar
@@ -88,7 +88,7 @@ import org.koin.compose.koinInject
 @Composable
 fun DevToolsScreen(onBack: () -> Unit) {
     val chunkDao: ChunkDao = koinInject()
-    val materialDao: MaterialDao = koinInject()
+    val materialDao: DocumentDao = koinInject()
     val conversationDao: ConversationDao = koinInject()
     val deviceInfo: DeviceInfo = koinInject()
     val orchestrator: EngineOrchestrator = koinInject()
@@ -100,7 +100,7 @@ fun DevToolsScreen(onBack: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var chunks by remember { mutableStateOf<List<ChunkEntity>>(emptyList()) }
-    var materials by remember { mutableStateOf<List<MaterialEntity>>(emptyList()) }
+    var materials by remember { mutableStateOf<List<DocumentEntity>>(emptyList()) }
     var conversationCount by remember { mutableIntStateOf(0) }
 
     var cacheSize by remember { mutableLongStateOf(0L) }
@@ -192,7 +192,7 @@ fun DevToolsScreen(onBack: () -> Unit) {
 @Composable
 private fun ChunksTab(
     chunks: List<ChunkEntity>,
-    materials: List<MaterialEntity>
+    materials: List<DocumentEntity>
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedMaterialId by remember { mutableStateOf<Long?>(null) }
@@ -205,7 +205,7 @@ private fun ChunksTab(
             val matchesSearch = searchQuery.isBlank() ||
                 chunk.content.contains(searchQuery, ignoreCase = true)
             val matchesMaterial = selectedMaterialId == null ||
-                chunk.materialId == selectedMaterialId
+                chunk.documentId == selectedMaterialId
             matchesSearch && matchesMaterial
         }
     }
@@ -280,7 +280,7 @@ private fun ChunksTab(
                 val isExpanded = expandedChunkIds.contains(chunk.id)
                 ChunkCard(
                     chunk = chunk,
-                    materialName = materialMap[chunk.materialId]?.title,
+                    materialName = materialMap[chunk.documentId]?.title,
                     isExpanded = isExpanded,
                     onToggleExpand = {
                         expandedChunkIds = if (isExpanded) {

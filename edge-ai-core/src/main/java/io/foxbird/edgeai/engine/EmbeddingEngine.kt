@@ -1,5 +1,6 @@
 package io.foxbird.edgeai.engine
 
+import arrow.core.right
 import io.foxbird.edgeai.util.AppResult
 
 /**
@@ -20,6 +21,14 @@ interface EmbeddingEngine {
     fun isModelLoaded(): Boolean
 
     suspend fun embed(text: String): AppResult<FloatArray>
+
+    /** Send all texts in one native model call — significantly faster than looping [embed]. */
+    suspend fun embedBatch(texts: List<String>): AppResult<List<FloatArray>> =
+        texts.map { embed(it) }.let { results ->
+            val embeddings = results.mapNotNull { it.getOrNull() }
+            embeddings.right()
+        }
+
     fun getEmbeddingDimension(): Int
 
     fun destroy()

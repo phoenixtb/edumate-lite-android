@@ -8,9 +8,10 @@ import io.foxbird.edgeai.engine.ModelManager
 import io.foxbird.edgeai.model.DownloadEvent
 import io.foxbird.edgeai.model.ModelConfig
 import io.foxbird.edgeai.model.ModelState
+import io.foxbird.doclibrary.data.local.DocumentDatabase
+import io.foxbird.doclibrary.data.repository.ChunkRepository
+import io.foxbird.doclibrary.data.repository.DocumentRepository
 import io.foxbird.edumate.data.local.EduMateDatabase
-import io.foxbird.edumate.data.repository.ChunkRepository
-import io.foxbird.edumate.data.repository.MaterialRepository
 import io.foxbird.edumate.data.preferences.AppPreferences
 import io.foxbird.edumate.data.preferences.UserPreferencesManager
 import io.foxbird.edumate.ui.theme.ThemeMode
@@ -25,9 +26,10 @@ class SettingsViewModel(
     private val prefsManager: UserPreferencesManager,
     val modelManager: ModelManager,
     private val memoryMonitor: MemoryMonitor,
-    private val materialRepository: MaterialRepository,
+    private val documentRepository: DocumentRepository,
     private val chunkRepository: ChunkRepository,
-    private val database: EduMateDatabase
+    private val chatDatabase: EduMateDatabase,
+    private val documentDatabase: DocumentDatabase
 ) : ViewModel() {
 
     val preferences: StateFlow<AppPreferences> = prefsManager.preferencesFlow
@@ -39,7 +41,7 @@ class SettingsViewModel(
     val memorySnapshot: StateFlow<MemorySnapshot> = memoryMonitor.snapshot
 
     private val _materialCount = MutableStateFlow(0)
-    val materialCount: StateFlow<Int> = _materialCount.asStateFlow()
+    val documentCount: StateFlow<Int> = _materialCount.asStateFlow()
 
     private val _chunkCount = MutableStateFlow(0)
     val chunkCount: StateFlow<Int> = _chunkCount.asStateFlow()
@@ -58,7 +60,7 @@ class SettingsViewModel(
 
     private fun refreshCounts() {
         viewModelScope.launch {
-            _materialCount.value = materialRepository.getCount()
+            _materialCount.value = documentRepository.getCount()
             _chunkCount.value = chunkRepository.getTotalCount()
         }
     }
@@ -125,7 +127,8 @@ class SettingsViewModel(
 
     fun clearAllData() {
         viewModelScope.launch {
-            database.clearAllTables()
+            chatDatabase.clearAllTables()
+            documentDatabase.clearAllTables()
             refreshCounts()
         }
     }

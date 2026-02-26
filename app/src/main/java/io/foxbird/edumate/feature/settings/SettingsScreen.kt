@@ -77,7 +77,7 @@ fun SettingsScreen(
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val modelStates by viewModel.modelStates.collectAsStateWithLifecycle()
     val activeModelId by viewModel.activeInferenceModelId.collectAsStateWithLifecycle()
-    val materialCount by viewModel.materialCount.collectAsStateWithLifecycle()
+    val materialCount by viewModel.documentCount.collectAsStateWithLifecycle()
     val chunkCount by viewModel.chunkCount.collectAsStateWithLifecycle()
     val memorySnapshot by viewModel.memorySnapshot.collectAsStateWithLifecycle()
 

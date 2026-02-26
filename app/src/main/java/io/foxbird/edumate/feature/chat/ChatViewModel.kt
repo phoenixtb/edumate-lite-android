@@ -2,18 +2,17 @@ package io.foxbird.edumate.feature.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.foxbird.doclibrary.domain.rag.IRagEngine
+import io.foxbird.doclibrary.domain.rag.SearchResult
 import io.foxbird.edgeai.util.Logger
-import io.foxbird.edumate.domain.engine.IRagEngine
-import io.foxbird.edumate.domain.engine.SearchResult
+import io.foxbird.edumate.core.util.AppConstants
+import io.foxbird.edumate.data.local.entity.MessageEntity
 import io.foxbird.edumate.domain.service.ConversationManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import io.foxbird.edumate.data.local.entity.MessageEntity
 
 data class ChatMessage(
     val id: Long = 0,
@@ -28,7 +27,7 @@ data class ChatUiState(
     val title: String = "New Chat",
     val isGenerating: Boolean = false,
     val error: String? = null,
-    val materialFilterIds: List<Long> = emptyList()
+    val documentFilterIds: List<Long> = emptyList()
 )
 
 class ChatViewModel(
@@ -76,27 +75,23 @@ class ChatViewModel(
 
         generateJob = viewModelScope.launch {
             try {
-                // Add user message
                 conversationManager.addMessage(convId, "user", content)
                 _messages.value = _messages.value + ChatMessage(role = "user", content = content)
                 _uiState.value = _uiState.value.copy(isGenerating = true, error = null)
 
-                // Auto-title on first message
                 if (_messages.value.size == 1) {
                     conversationManager.autoGenerateTitle(convId, content)
                 }
 
-                // RAG retrieval
                 val history = conversationManager.getConversationHistory(convId)
-                val materialIds = _uiState.value.materialFilterIds.ifEmpty { null }
+                val documentIds = _uiState.value.documentFilterIds.ifEmpty { null }
                 val ragContext = ragEngine.retrieve(
                     query = content,
-                    materialIds = materialIds,
-                    topK = io.foxbird.edumate.core.util.AppConstants.RETRIEVAL_TOP_K,
-                    threshold = io.foxbird.edumate.core.util.AppConstants.SIMILARITY_THRESHOLD
+                    documentIds = documentIds,
+                    topK = AppConstants.RETRIEVAL_TOP_K,
+                    threshold = AppConstants.SIMILARITY_THRESHOLD
                 )
 
-                // Stream generation
                 val streamingMsg = ChatMessage(
                     role = "assistant",
                     content = "",
@@ -106,39 +101,29 @@ class ChatViewModel(
                 _messages.value = _messages.value + streamingMsg
 
                 val responseBuilder = StringBuilder()
-
                 ragEngine.generateStream(
                     query = content,
                     context = ragContext,
                     conversationHistory = history,
-                    maxTokens = io.foxbird.edumate.core.util.AppConstants.MAX_INFERENCE_TOKENS,
-                    temperature = io.foxbird.edumate.core.util.AppConstants.INFERENCE_TEMPERATURE
+                    maxTokens = AppConstants.MAX_INFERENCE_TOKENS,
+                    temperature = AppConstants.INFERENCE_TEMPERATURE
                 ).collect { token ->
                     responseBuilder.append(token)
-                    val updatedMsg = streamingMsg.copy(content = responseBuilder.toString())
-                    _messages.value = _messages.value.dropLast(1) + updatedMsg
+                    _messages.value = _messages.value.dropLast(1) +
+                        streamingMsg.copy(content = responseBuilder.toString())
                 }
 
-                // Finalize
                 val finalContent = responseBuilder.toString()
                 val chunkIdsStr = ragContext.chunks.map { it.chunk.id }.joinToString(",")
-                conversationManager.addMessage(
-                    convId, "assistant", finalContent,
-                    retrievedChunkIds = chunkIdsStr
-                )
+                conversationManager.addMessage(convId, "assistant", finalContent, retrievedChunkIds = chunkIdsStr)
 
-                _messages.value = _messages.value.dropLast(1) + streamingMsg.copy(
-                    content = finalContent,
-                    isStreaming = false
-                )
+                _messages.value = _messages.value.dropLast(1) +
+                    streamingMsg.copy(content = finalContent, isStreaming = false)
                 _uiState.value = _uiState.value.copy(isGenerating = false)
 
             } catch (e: Exception) {
                 Logger.e(TAG, "Generation failed", e)
-                _uiState.value = _uiState.value.copy(
-                    isGenerating = false,
-                    error = e.message
-                )
+                _uiState.value = _uiState.value.copy(isGenerating = false, error = e.message)
             }
         }
     }
@@ -159,13 +144,9 @@ class ChatViewModel(
         }
     }
 
-    fun setMaterialFilter(ids: List<Long>) {
-        _uiState.value = _uiState.value.copy(materialFilterIds = ids)
+    fun setDocumentFilter(ids: List<Long>) {
+        _uiState.value = _uiState.value.copy(documentFilterIds = ids)
     }
 
-    private fun MessageEntity.toChatMessage() = ChatMessage(
-        id = id,
-        role = role,
-        content = content,
-    )
+    private fun MessageEntity.toChatMessage() = ChatMessage(id = id, role = role, content = content)
 }

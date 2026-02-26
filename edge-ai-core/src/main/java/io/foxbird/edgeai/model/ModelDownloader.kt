@@ -11,13 +11,14 @@ import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import java.io.File
-import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.currentCoroutineContext
 
 sealed class DownloadEvent {
     data class Progress(val bytesDownloaded: Long, val totalBytes: Long) : DownloadEvent() {
@@ -114,6 +115,7 @@ class ModelDownloader(private val context: Context) {
         tempFile: File,
         onEvent: suspend (DownloadEvent) -> Unit
     ): Boolean {
+        val ctx = currentCoroutineContext()
         client.prepareGet(config.downloadUrl).execute { response ->
             if (!response.status.isSuccess()) {
                 throw Exception("HTTP ${response.status.value}")
@@ -125,7 +127,7 @@ class ModelDownloader(private val context: Context) {
             val buffer = ByteArray(BUFFER_SIZE)
 
             tempFile.outputStream().use { output ->
-                while (!channel.isClosedForRead && coroutineContext.isActive) {
+                while (!channel.isClosedForRead && ctx.isActive) {
                     val bytesRead = channel.readAvailable(buffer)
                     if (bytesRead <= 0) break
                     output.write(buffer, 0, bytesRead)
@@ -134,7 +136,7 @@ class ModelDownloader(private val context: Context) {
                 }
             }
 
-            if (!coroutineContext.isActive) {
+            if (!ctx.isActive) {
                 tempFile.delete()
                 return@execute false
             }

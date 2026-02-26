@@ -25,4 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "EduMate Lite"
 include(":app")
 include(":edge-ai-core")
+include(":doc-library")
+include(":agent-core")
  
