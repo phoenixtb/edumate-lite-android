@@ -42,7 +42,6 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
@@ -57,14 +56,12 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +88,10 @@ import io.foxbird.doclibrary.domain.processor.ProcessingMode
 import io.foxbird.doclibrary.viewmodel.AddFlow
 import io.foxbird.doclibrary.viewmodel.LibraryViewModel
 import io.foxbird.doclibrary.viewmodel.SourceType
+import io.foxbird.edumate.ui.components.EduAlertDialog
+import io.foxbird.edumate.ui.components.EduDialogTitle
+import io.foxbird.edumate.ui.components.EduModalBottomSheet
+import io.foxbird.edumate.ui.components.EduSelectOption
 import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.ProcessingCard
 import io.foxbird.edumate.ui.components.SectionHeader
@@ -208,13 +209,7 @@ fun MaterialsScreen(
 
     // ---------- Add sheet ----------
     if (showAddSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.closeAddSheet() },
-            sheetState = rememberModalBottomSheetState(),
-            containerColor = Color(0xFF09090F),
-            scrimColor = Color.Black.copy(alpha = 0.6f),
-            tonalElevation = 0.dp
-        ) {
+        EduModalBottomSheet(onDismissRequest = { viewModel.closeAddSheet() }) {
             AddMaterialSheet(
                 onPdfClick = {
                     viewModel.closeAddSheet()
@@ -513,9 +508,6 @@ private fun EmptyMaterialsState(modifier: Modifier = Modifier) {
 
 // ---------- Add Material Sheet ----------
 
-private val SheetBg = Color(0xFF09090F)
-private val SheetSurface = Color(0xFF111118)
-
 @Composable
 private fun AddMaterialSheet(
     onPdfClick: () -> Unit,
@@ -523,30 +515,13 @@ private fun AddMaterialSheet(
     onCameraClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val scheme = MaterialTheme.colorScheme
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SheetBg)
             .navigationBarsPadding()
     ) {
-        // Top glow accent line
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f),
-                            Color.Transparent
-                        )
-                    )
-                )
-        )
-
-        // Header
+        // Header (EduModalBottomSheet provides top glow)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
@@ -556,14 +531,14 @@ private fun AddMaterialSheet(
                     "SELECT SOURCE",
                     style = MaterialTheme.typography.labelMedium,
                     letterSpacing = 2.sp,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = scheme.primary,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     "Choose where to pull study material from",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.35f)
+                    color = scheme.onSurfaceVariant
                 )
             }
         }
@@ -581,7 +556,7 @@ private fun AddMaterialSheet(
                 .fillMaxWidth()
                 .height(1.dp)
                 .padding(horizontal = 20.dp)
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(scheme.outlineVariant.copy(alpha = 0.25f))
         )
         AiSheetOption(
             icon = Icons.Filled.Image,
@@ -595,7 +570,7 @@ private fun AddMaterialSheet(
                 .fillMaxWidth()
                 .height(1.dp)
                 .padding(horizontal = 20.dp)
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(scheme.outlineVariant.copy(alpha = 0.25f))
         )
         AiSheetOption(
             icon = Icons.Filled.CameraAlt,
@@ -617,6 +592,7 @@ private fun AiSheetOption(
     description: String,
     onClick: () -> Unit
 ) {
+    val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -624,48 +600,34 @@ private fun AiSheetOption(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Layered glow icon
         Box(contentAlignment = Alignment.Center) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .background(glowColor.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-            )
+            Box(modifier = Modifier.size(52.dp).background(glowColor.copy(alpha = 0.08f), RoundedCornerShape(14.dp)))
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(44.dp)
-                    .background(SheetSurface, RoundedCornerShape(12.dp))
-                    .border(1.dp, glowColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    .background(scheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                    .border(1.dp, glowColor.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
             ) {
                 Icon(icon, null, tint = glowColor, modifier = Modifier.size(22.dp))
             }
         }
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
+            Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = scheme.onSurface)
             Spacer(Modifier.height(2.dp))
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.38f)
-            )
+            Text(description, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(28.dp)
-                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                .background(scheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 null,
-                tint = Color.White.copy(alpha = 0.35f),
+                tint = scheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -690,7 +652,7 @@ fun DocumentDetailsDialog(
     var subjectExpanded by remember { mutableStateOf(false) }
     var gradeExpanded by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    EduAlertDialog(
         onDismissRequest = onCancel,
         title = { Text("Document Details") },
         text = {
@@ -762,33 +724,27 @@ fun ProcessingModeDialog(
     onSelect: (ProcessingMode) -> Unit,
     onCancel: () -> Unit
 ) {
-    AlertDialog(
+    val scheme = MaterialTheme.colorScheme
+    EduAlertDialog(
         onDismissRequest = onCancel,
-        title = {
-            Column {
-                Text("Processing Mode", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("How should we analyse this document?", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
+        title = { EduDialogTitle("Processing Mode", "How should we analyse this document?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProcessingModeOption(
+                EduSelectOption(
                     icon = Icons.Outlined.Speed,
-                    iconColor = Color(0xFF00BCD4),
-                    containerColor = Color(0xFF00BCD4).copy(alpha = 0.12f),
+                    iconColor = scheme.primary,
                     title = "Fast",
                     badge = "Recommended",
-                    badgeColor = Color(0xFF00BCD4),
+                    badgeColor = scheme.primary,
                     description = "Direct text extraction — ideal for digital PDFs and clean typed notes.",
                     onClick = { onSelect(ProcessingMode.FAST) }
                 )
-                ProcessingModeOption(
+                EduSelectOption(
                     icon = Icons.Outlined.AutoAwesome,
-                    iconColor = Color(0xFF7C4DFF),
-                    containerColor = Color(0xFF7C4DFF).copy(alpha = 0.12f),
+                    iconColor = scheme.tertiary,
                     title = "Thorough  ·  AI Vision",
                     badge = "Slower",
-                    badgeColor = Color(0xFFFF7043),
+                    badgeColor = scheme.secondary,
                     description = "AI reads each page image — best for scanned docs, handwriting, equations, diagrams.",
                     onClick = { onSelect(ProcessingMode.THOROUGH) }
                 )
@@ -797,54 +753,6 @@ fun ProcessingModeDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
     )
-}
-
-@Composable
-private fun ProcessingModeOption(
-    icon: ImageVector,
-    iconColor: Color,
-    containerColor: Color,
-    title: String,
-    badge: String,
-    badgeColor: Color,
-    description: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(containerColor)
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(26.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(badgeColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                ) {
-                    Text(badge, style = MaterialTheme.typography.labelSmall, color = badgeColor, fontWeight = FontWeight.SemiBold)
-                }
-            }
-            Spacer(Modifier.height(3.dp))
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
 }
 
 // ---------- Edit Document Dialog ----------
@@ -862,7 +770,7 @@ private fun EditDocumentDialog(
     var subjectExpanded by remember { mutableStateOf(false) }
     var gradeExpanded by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    EduAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Document") },
         text = {

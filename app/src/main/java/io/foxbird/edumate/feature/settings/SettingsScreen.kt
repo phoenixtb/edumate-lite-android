@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +64,7 @@ import io.foxbird.edgeai.engine.MemoryPressure
 import io.foxbird.edgeai.engine.MemorySnapshot
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.edumate.core.model.AppModelConfigs
+import io.foxbird.edumate.ui.components.EduAlertDialog
 import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.theme.StatusActive
@@ -88,7 +88,7 @@ fun SettingsScreen(
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {
-        AlertDialog(
+        EduAlertDialog(
             onDismissRequest = { showClearDialog = false },
             title = { Text("Clear All Data") },
             text = {
@@ -102,13 +102,11 @@ fun SettingsScreen(
                     viewModel.clearAllData()
                     showClearDialog = false
                 }) {
-                    Text("Delete", color = Color(0xFFFF5252))
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
             }
         )
     }
