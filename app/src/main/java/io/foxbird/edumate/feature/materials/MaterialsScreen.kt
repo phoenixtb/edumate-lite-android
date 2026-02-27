@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,11 +73,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.foxbird.edumate.ui.theme.appColors
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.foxbird.doclibrary.data.local.entity.DocumentEntity
 import io.foxbird.doclibrary.domain.processor.ProcessingMode
@@ -87,8 +95,6 @@ import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.ProcessingCard
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.components.deriveProcessingStep
-import io.foxbird.edumate.ui.theme.EduAmber
-import io.foxbird.edumate.ui.theme.EduPurple
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -147,11 +153,12 @@ fun MaterialsScreen(
                     }
                 }
             )
-        }
+        },
+        containerColor = Color.Transparent,
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 16.dp)
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             item {
                 AddMaterialBanner(onClick = { viewModel.openAddSheet() })
@@ -203,7 +210,10 @@ fun MaterialsScreen(
     if (showAddSheet) {
         ModalBottomSheet(
             onDismissRequest = { viewModel.closeAddSheet() },
-            sheetState = rememberModalBottomSheetState()
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = Color(0xFF09090F),
+            scrimColor = Color.Black.copy(alpha = 0.6f),
+            tonalElevation = 0.dp
         ) {
             AddMaterialSheet(
                 onPdfClick = {
@@ -259,8 +269,9 @@ private fun formatDate(timestamp: Long?): String {
 
 @Composable
 private fun AddMaterialBanner(onClick: () -> Unit) {
-    val gradient = androidx.compose.ui.graphics.Brush.linearGradient(
-        colors = listOf(Color(0xFF1A0E50), Color(0xFF2D1F90))
+    val scheme = MaterialTheme.colorScheme
+    val gradient = Brush.linearGradient(
+        colors = listOf(scheme.primaryContainer, scheme.primary.copy(alpha = 0.9f))
     )
     Box(
         modifier = Modifier
@@ -270,34 +281,33 @@ private fun AddMaterialBanner(onClick: () -> Unit) {
             .background(gradient)
             .clickable(onClick = onClick)
     ) {
-        // Subtle glow overlay at top
+        // Subtle glow overlay at top — uses appColors for consistency
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp)
                 .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(EduPurple.copy(alpha = 0.15f), Color.Transparent)
+                    Brush.verticalGradient(
+                        listOf(scheme.onPrimaryContainer.copy(alpha = 0.06f), Color.Transparent)
                     )
                 )
         )
         Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Icon with glow halo
             Box(contentAlignment = Alignment.Center) {
-                Box(modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)))
+                Box(modifier = Modifier.size(52.dp).background(scheme.onPrimaryContainer.copy(alpha = 0.12f), RoundedCornerShape(16.dp)))
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(Color(0xFF3D2AB5))
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(scheme.primary)
                 ) {
-                    Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(26.dp))
+                    Icon(Icons.Filled.Add, null, tint = scheme.onPrimary, modifier = Modifier.size(26.dp))
                 }
             }
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Add New Material", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("PDF, Image, or Camera", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+                Text("Add New Material", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("PDF, Image, or Camera", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.65f))
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Color.White.copy(alpha = 0.7f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
         }
     }
 }
@@ -316,20 +326,70 @@ private fun DocumentListCard(
     var showMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    val (icon, iconColor) = documentTypeIcon(document.sourceType)
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
+    val stripeColor = iconColor
+    val isReady = document.status == "completed"
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+            .background(scheme.surfaceContainerLow)
+            .clickable(onClick = onClick)
+            // Left type-color stripe drawn behind content
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(stripeColor, stripeColor.copy(alpha = 0.35f)),
+                        startY = 0f, endY = size.height,
+                    ),
+                    size = Size(3.5.dp.toPx(), size.height),
+                )
+            }
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            val (icon, iconColor) = documentTypeIcon(document.sourceType)
-            IconContainer(icon = icon, containerColor = iconColor.copy(alpha = 0.25f), iconColor = iconColor)
+        // Subtle top glow tinted by document type
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(iconColor.copy(alpha = 0.08f), Color.Transparent)
+                    )
+                )
+        )
+
+        Row(
+            modifier = Modifier.padding(start = 15.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Icon with glow halo
+            Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp).background(iconColor.copy(alpha = 0.12f), RoundedCornerShape(14.dp)))
+                IconContainer(
+                    icon = icon,
+                    containerColor = iconColor.copy(alpha = 0.20f),
+                    iconColor = iconColor,
+                    size = 44.dp,
+                    iconSize = 22.dp,
+                )
+            }
+
             Spacer(Modifier.width(12.dp))
+
             Column(modifier = Modifier.weight(1f)) {
-                Text(document.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    document.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(4.dp))
 
-                // Subject / grade chips
                 if (document.subject != null || document.gradeLevel != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         document.subject?.let { subj ->
@@ -342,29 +402,47 @@ private fun DocumentListCard(
                     Spacer(Modifier.height(4.dp))
                 }
 
-                if (document.status == "completed") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Lightbulb, null, Modifier.size(14.dp), tint = Color(0xFFFFB300))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Ready to help", style = MaterialTheme.typography.bodySmall, color = Color(0xFF4CAF50))
-                        val dateStr = formatDate(document.processedAt)
-                        if (dateStr.isNotEmpty()) {
-                            Spacer(Modifier.width(6.dp))
-                            Text(dateStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Status pill
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isReady) appColors.stepComplete.copy(alpha = 0.14f)
+                                else scheme.surfaceContainerHighest
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isReady) Icons.Outlined.Lightbulb else Icons.Outlined.HourglassEmpty,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = if (isReady) appColors.stepComplete else scheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = if (isReady) "Ready to help" else "Processing…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isReady) appColors.stepComplete else scheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium,
+                            )
                         }
                     }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.HourglassEmpty, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Processing…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isReady) {
+                        val dateStr = formatDate(document.processedAt)
+                        if (dateStr.isNotEmpty()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(dateStr, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        }
                     }
                 }
             }
 
             Box {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Filled.MoreVert, "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.MoreVert, "Options", tint = scheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
@@ -375,7 +453,7 @@ private fun DocumentListCard(
                     DropdownMenuItem(
                         text = { Text("Delete") },
                         onClick = { showMenu = false; onDelete() },
-                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = scheme.error) }
                     )
                 }
             }
@@ -402,18 +480,41 @@ private fun documentTypeIcon(sourceType: String): Pair<ImageVector, Color> = whe
 
 @Composable
 private fun EmptyMaterialsState(modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Filled.FolderOpen, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-            Spacer(Modifier.height(16.dp))
-            Text("No materials yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(4.dp))
-            Text("Add your study materials to get started", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            Box(contentAlignment = Alignment.Center) {
+                // Outer ambient glow
+                Box(
+                    modifier = Modifier
+                        .size(110.dp)
+                        .clip(CircleShape)
+                        .background(Brush.radialGradient(listOf(scheme.primary.copy(alpha = 0.15f), Color.Transparent)))
+                )
+                // Inner icon container
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(scheme.primaryContainer.copy(alpha = 0.28f))
+                        .border(1.dp, scheme.primary.copy(alpha = 0.20f), CircleShape)
+                ) {
+                    Icon(Icons.Filled.FolderOpen, null, Modifier.size(36.dp), tint = scheme.primary.copy(alpha = 0.75f))
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Text("No materials yet", style = MaterialTheme.typography.titleMedium, color = scheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text("Add your study materials to get started", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant.copy(alpha = 0.7f))
         }
     }
 }
 
 // ---------- Add Material Sheet ----------
+
+private val SheetBg = Color(0xFF09090F)
+private val SheetSurface = Color(0xFF111118)
 
 @Composable
 private fun AddMaterialSheet(
@@ -422,106 +523,152 @@ private fun AddMaterialSheet(
     onCameraClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SheetBg)
+            .navigationBarsPadding()
+    ) {
+        // Top glow accent line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Transparent,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
         // Header
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Icon(
-                    Icons.Filled.Add,
-                    null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Add Study Material",
-                    style = MaterialTheme.typography.titleLarge,
+                    "SELECT SOURCE",
+                    style = MaterialTheme.typography.labelMedium,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    "Choose a source to upload",
+                    "Choose where to pull study material from",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White.copy(alpha = 0.35f)
                 )
             }
         }
 
-        HorizontalDivider()
-
-        SheetOption(
+        // Source options
+        AiSheetOption(
             icon = Icons.Filled.PictureAsPdf,
-            iconColor = Color(0xFFEF5350),
-            containerColor = Color(0xFFEF5350).copy(alpha = 0.15f),
-            title = "PDF Document",
-            subtitle = "Upload textbooks, notes, or worksheets",
+            glowColor = Color(0xFFFF453A),
+            label = "PDF Document",
+            description = "Textbooks, notes, worksheets",
             onClick = onPdfClick
         )
-        SheetOption(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .padding(horizontal = 20.dp)
+                .background(Color.White.copy(alpha = 0.06f))
+        )
+        AiSheetOption(
             icon = Icons.Filled.Image,
-            iconColor = Color(0xFF42A5F5),
-            containerColor = Color(0xFF42A5F5).copy(alpha = 0.15f),
-            title = "From Gallery",
-            subtitle = "Select images of study materials",
+            glowColor = Color(0xFF30D158),
+            label = "Image Gallery",
+            description = "Select study material images",
             onClick = onGalleryClick
         )
-        SheetOption(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .padding(horizontal = 20.dp)
+                .background(Color.White.copy(alpha = 0.06f))
+        )
+        AiSheetOption(
             icon = Icons.Filled.CameraAlt,
-            iconColor = EduAmber,
-            containerColor = EduAmber.copy(alpha = 0.15f),
-            title = "Take Photo",
-            subtitle = "Capture pages with your camera",
+            glowColor = Color(0xFFBF5AF2),
+            label = "Camera Capture",
+            description = "Photograph your materials",
             onClick = onCameraClick
         )
 
-        Spacer(Modifier.height(8.dp))
-        TextButton(modifier = Modifier.fillMaxWidth(), onClick = onDismiss) {
-            Text("Cancel")
-        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun SheetOption(
+private fun AiSheetOption(
     icon: ImageVector,
-    iconColor: Color,
-    containerColor: Color,
-    title: String,
-    subtitle: String,
+    glowColor: Color,
+    label: String,
+    description: String,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(containerColor)
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(26.dp))
+        // Layered glow icon
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .background(glowColor.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(SheetSurface, RoundedCornerShape(12.dp))
+                    .border(1.dp, glowColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            ) {
+                Icon(icon, null, tint = glowColor, modifier = Modifier.size(22.dp))
+            }
         }
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.38f)
+            )
         }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(28.dp)
+                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = Color.White.copy(alpha = 0.35f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 

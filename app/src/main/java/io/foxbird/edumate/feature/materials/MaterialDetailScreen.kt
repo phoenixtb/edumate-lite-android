@@ -1,8 +1,11 @@
 package io.foxbird.edumate.feature.materials
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,8 +31,6 @@ import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +45,7 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +53,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -61,9 +66,7 @@ import io.foxbird.doclibrary.data.local.entity.DocumentEntity
 import io.foxbird.doclibrary.viewmodel.DocumentDetailViewModel
 import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.StatusChip
-import io.foxbird.edumate.ui.theme.EduBlue
-import io.foxbird.edumate.ui.theme.EduPurple
-import io.foxbird.edumate.ui.theme.EduTeal
+import io.foxbird.edumate.ui.theme.appColors
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.text.SimpleDateFormat
@@ -85,6 +88,7 @@ fun MaterialDetailScreen(
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
@@ -108,13 +112,17 @@ fun MaterialDetailScreen(
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             // Tab row with badges
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+            ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Overview") })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
                     BadgedBox(badge = {
@@ -150,45 +158,54 @@ private fun OverviewTab(
     val displayedConcepts = concepts.take(5)
     val remainingCount = (concepts.size - 5).coerceAtLeast(0)
 
+    val scheme = MaterialTheme.colorScheme
+
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
         // Stat cards
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OverviewStatCard(Icons.Filled.Dashboard, "Chunks", "$chunkCount", EduBlue, Modifier.weight(1f))
+            OverviewStatCard(Icons.Filled.Dashboard, "Chunks", "$chunkCount", scheme.primary, Modifier.weight(1f))
             OverviewStatCard(Icons.Filled.Lightbulb, "Concepts", "${concepts.size}", Color(0xFFFFAB00), Modifier.weight(1f))
-            OverviewStatCard(Icons.Filled.AccountTree, "Related", "0", EduTeal, Modifier.weight(1f))
+            OverviewStatCard(Icons.Filled.AccountTree, "Related", "0", scheme.tertiary, Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(20.dp))
-        Text("Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        Text("Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = scheme.primary)
         Spacer(Modifier.height(8.dp))
 
-        Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        // Glass details card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(scheme.surfaceContainerLow)
+        ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 DetailRow("Source Type", document?.sourceType?.replaceFirstChar { it.uppercase() } ?: "Unknown")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outline.copy(alpha = 0.15f))
                 DetailRow("Subject", document?.subject ?: "Not set")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outline.copy(alpha = 0.15f))
                 DetailRow("Grade Level", document?.gradeLevel?.let { "Grade $it" } ?: "Not set")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outline.copy(alpha = 0.15f))
                 DetailRow("Status", document?.status?.replaceFirstChar { it.uppercase() } ?: "Unknown")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outline.copy(alpha = 0.15f))
                 DetailRow("Processed", formatDetailDate(document?.processedAt))
             }
         }
 
         if (displayedConcepts.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
-            Text("Top Concepts", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Text("Top Concepts", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = scheme.primary)
             Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 displayedConcepts.forEach { concept ->
                     StatusChip(
                         text = "${concept.name}  ${concept.frequency}",
-                        containerColor = EduPurple.copy(alpha = 0.12f),
-                        textColor = EduPurple
+                        containerColor = scheme.primary.copy(alpha = 0.12f),
+                        textColor = scheme.primary
                     )
                 }
             }
@@ -205,12 +222,37 @@ private fun OverviewTab(
 
 @Composable
 private fun OverviewStatCard(icon: ImageVector, label: String, value: String, iconColor: Color, modifier: Modifier = Modifier) {
-    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = modifier) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Icon(icon, null, Modifier.size(24.dp), tint = iconColor)
-            Spacer(Modifier.height(6.dp))
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+            .background(scheme.surfaceContainerLow)
+    ) {
+        // Top tinted glow from the icon color
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .background(Brush.verticalGradient(listOf(iconColor.copy(alpha = 0.10f), Color.Transparent)))
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(12.dp)
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(iconColor.copy(alpha = 0.14f))
+            ) {
+                Icon(icon, null, Modifier.size(20.dp), tint = iconColor)
+            }
+            Spacer(Modifier.height(8.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
         }
     }
 }
@@ -258,12 +300,26 @@ private fun ConceptsTab(concepts: List<ConceptEntity>) {
 
 @Composable
 private fun ConceptGridCard(concept: ConceptEntity) {
-    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    val amberColor = Color(0xFFFFAB00)
+    val appColors = MaterialTheme.appColors
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(13.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(13.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        // Subtle amber top glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .background(Brush.verticalGradient(listOf(amberColor.copy(alpha = 0.07f), Color.Transparent)))
+        )
         Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             IconContainer(
                 icon = Icons.Filled.Lightbulb,
-                containerColor = Color(0xFFFFAB00).copy(alpha = 0.15f),
-                iconColor = Color(0xFFFFAB00),
+                containerColor = amberColor.copy(alpha = 0.15f),
+                iconColor = amberColor,
                 size = 32.dp,
                 iconSize = 16.dp
             )
@@ -278,11 +334,35 @@ private fun ConceptGridCard(concept: ConceptEntity) {
 
 @Composable
 private fun RelatedTab() {
+    val scheme = MaterialTheme.colorScheme
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Filled.LinkOff, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-            Spacer(Modifier.height(12.dp))
-            Text("No related materials yet", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Atmospheric glow halo
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(scheme.tertiary.copy(alpha = 0.18f), Color.Transparent)
+                            )
+                        )
+                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(scheme.tertiaryContainer.copy(alpha = 0.3f))
+                ) {
+                    Icon(Icons.Filled.LinkOff, null, Modifier.size(32.dp), tint = scheme.onTertiaryContainer.copy(alpha = 0.7f))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("No related materials yet", style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text("Related documents will appear here", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant.copy(alpha = 0.6f))
         }
     }
 }

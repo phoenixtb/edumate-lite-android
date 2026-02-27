@@ -2,6 +2,8 @@ package io.foxbird.edumate.feature.settings
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -67,6 +72,7 @@ import io.foxbird.edumate.ui.components.StatusChip
 import io.foxbird.edumate.ui.theme.StatusActive
 import io.foxbird.edumate.ui.theme.StatusDownloading
 import io.foxbird.edumate.ui.theme.StatusDownloadingContainer
+import io.foxbird.edumate.ui.theme.appColors
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,6 +95,7 @@ fun ModelManagerScreen(
     )
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
@@ -111,7 +118,6 @@ fun ModelManagerScreen(
                     }
                 },
                 actions = {
-                    // Live status dot — green when ready, grey otherwise
                     Icon(
                         Icons.Filled.Memory,
                         contentDescription = null,
@@ -119,9 +125,7 @@ fun ModelManagerScreen(
                         modifier = Modifier.size(20.dp).padding(end = 16.dp)
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
     ) { innerPadding ->
@@ -147,41 +151,48 @@ fun ModelManagerScreen(
             // ── Active Model Banner ───────────────────────────────────
             val activeModelConfig = activeModelId?.let { AppModelConfigs.findById(it) }
             if (activeModelConfig != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = StatusActive.copy(alpha = 0.1f))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, StatusActive.copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
+                    // Subtle green glow at top
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .background(Brush.verticalGradient(listOf(StatusActive.copy(alpha = 0.10f), Color.Transparent)))
+                    )
+                    // Left active stripe
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .drawBehind {
+                                drawRect(
+                                    brush = Brush.verticalGradient(listOf(StatusActive, StatusActive.copy(alpha = 0.4f))),
+                                    size = Size(3.5.dp.toPx(), size.height),
+                                )
+                            }
+                    )
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(start = 15.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = StatusActive.copy(alpha = 0.2f),
-                            modifier = Modifier.size(36.dp)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(StatusActive.copy(alpha = 0.18f))
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Filled.CheckCircle, null,
-                                    tint = StatusActive,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                            Icon(Icons.Filled.CheckCircle, null, tint = StatusActive, modifier = Modifier.size(20.dp))
                         }
                         Column {
-                            Text(
-                                "Active — Ready to help",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = StatusActive
-                            )
-                            Text(
-                                "${activeModelConfig.name} is loaded and running",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Active — Ready to help", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = StatusActive)
+                            Text("${activeModelConfig.name} is loaded and running", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -223,122 +234,106 @@ internal fun ModelCard(
     onUnload: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
     val isActive = state is ModelState.Ready
+
     val engineLabel = when (config.engineType) {
         EngineType.LITE_RT -> "LiteRT"
         EngineType.LLAMA_CPP -> "llama.cpp"
     }
     val engineChipColor = when (config.engineType) {
-        EngineType.LITE_RT -> Color(0xFF00897B)
-        EngineType.LLAMA_CPP -> Color(0xFF448AFF)
+        EngineType.LITE_RT -> scheme.tertiary
+        EngineType.LLAMA_CPP -> scheme.primary
     }
     val purposeDescription = when (config.purpose) {
-        ModelPurpose.INFERENCE -> "Reads your questions and writes helpful answers"
-        ModelPurpose.EMBEDDING -> "Finds the most relevant parts of your study materials"
+        ModelPurpose.INFERENCE -> "Inference · Chat & answers"
+        ModelPurpose.EMBEDDING -> "Embedding · Semantic search"
+    }
+    val accentColor = if (isActive) StatusActive else scheme.primary
+    val cardBorder = when {
+        isActive -> StatusActive.copy(alpha = 0.30f)
+        else -> appColors.glassBorderDefault
     }
 
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .animateContentSize(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isActive -> StatusActive.copy(alpha = 0.08f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
+            .animateContentSize()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+            .background(scheme.surfaceContainerLow)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
+        // Top glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.09f), Color.Transparent)))
+        )
+
+        Column(modifier = Modifier.padding(14.dp)) {
+            // ── Header: name (primary) + purpose tag + active dot ───────────
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        purposeDescription,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            config.name,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        StatusChip(
-                            text = engineLabel,
-                            containerColor = engineChipColor.copy(alpha = 0.15f),
-                            textColor = engineChipColor
-                        )
+                    // Model name as primary title
+                    Text(config.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = scheme.onSurface)
+                    Spacer(Modifier.height(3.dp))
+                    // Purpose + engine chips on one row
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatusChip(text = purposeDescription, containerColor = scheme.secondaryContainer.copy(alpha = 0.5f), textColor = scheme.onSecondaryContainer)
+                        StatusChip(text = engineLabel, containerColor = engineChipColor.copy(alpha = 0.14f), textColor = engineChipColor)
                         if (config.isBundled) {
-                            StatusChip(
-                                text = "Included",
-                                containerColor = Color(0xFF1B3A4E),
-                                textColor = Color(0xFF7C4DFF)
-                            )
+                            StatusChip(text = "Bundled", containerColor = scheme.tertiaryContainer.copy(alpha = 0.5f), textColor = scheme.onTertiaryContainer)
                         }
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        config.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(config.description, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
                 if (isActive) {
-                    Surface(
-                        shape = CircleShape,
-                        color = StatusActive.copy(alpha = 0.18f),
-                        modifier = Modifier.size(28.dp)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(28.dp).clip(CircleShape).background(StatusActive.copy(alpha = 0.18f))
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Filled.CheckCircle, "Active",
-                                tint = StatusActive,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                        Icon(Icons.Filled.CheckCircle, "Active", tint = StatusActive, modifier = Modifier.size(16.dp))
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                ModelSpec("Size", config.fileSizeDisplay)
-                ModelSpec("Min RAM", "${config.requiredRamGB} GB")
-                ModelSpec("Context", "${config.contextLength / 1024}K tokens")
+            // ── Spec pills ───────────────────────────────────────────────────
+            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.25f))
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModelSpecPill(label = "Size", value = config.fileSizeDisplay, accentColor = scheme.primary)
+                ModelSpecPill(label = "Min RAM", value = "${config.requiredRamGB} GB", accentColor = scheme.secondary)
+                ModelSpecPill(label = "Context", value = "${config.contextLength / 1024}K", accentColor = scheme.tertiary)
             }
 
             if (!canRun) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(scheme.errorContainer.copy(alpha = 0.3f))
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Lock, null,
-                        Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-                    )
+                    Icon(Icons.Filled.Lock, null, Modifier.size(12.dp), tint = scheme.error)
                     Text(
                         "Needs ${config.requiredRamGB} GB total RAM — device may not support this model",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                        color = scheme.error
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(Modifier.height(14.dp))
 
+            // ── Actions ───────────────────────────────────────────────────────
             when {
                 state is ModelState.NotDownloaded -> {
                     Button(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
@@ -349,15 +344,8 @@ internal fun ModelCard(
                 }
 
                 state is ModelState.Downloading -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Downloading... ${(state.progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Downloading… ${(state.progress * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = StatusDownloading)
                         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Filled.Delete, "Cancel", Modifier.size(18.dp))
                         }
@@ -365,10 +353,7 @@ internal fun ModelCard(
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
                         progress = { state.progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
+                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
                         color = StatusDownloading,
                         trackColor = StatusDownloadingContainer,
                         strokeCap = StrokeCap.Round
@@ -376,11 +361,15 @@ internal fun ModelCard(
                 }
 
                 state is ModelState.DownloadFailed -> {
-                    Text(
-                        "Download failed: ${state.error}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(scheme.errorContainer.copy(alpha = 0.3f))
+                            .padding(10.dp)
+                    ) {
+                        Text("Download failed: ${state.error}", style = MaterialTheme.typography.bodySmall, color = scheme.error)
+                    }
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Download, null, Modifier.size(18.dp))
@@ -390,14 +379,10 @@ internal fun ModelCard(
                 }
 
                 state is ModelState.Loading || (isLoading && state !is ModelState.Ready) -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = scheme.primary)
                         Spacer(Modifier.width(10.dp))
-                        Text("Loading model into memory...", style = MaterialTheme.typography.bodyMedium)
+                        Text("Loading into memory…", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 
@@ -405,10 +390,7 @@ internal fun ModelCard(
                     FilledTonalButton(
                         onClick = onUnload,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = StatusActive.copy(alpha = 0.15f),
-                            contentColor = StatusActive
-                        )
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = StatusActive.copy(alpha = 0.14f), contentColor = StatusActive)
                     ) {
                         Icon(Icons.Filled.Stop, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -417,22 +399,14 @@ internal fun ModelCard(
                 }
 
                 state is ModelState.Downloaded -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onLoad, modifier = Modifier.weight(1f), enabled = canRun) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Load into Memory")
                         }
                         if (!config.isBundled) {
-                            OutlinedButton(
-                                onClick = onDelete,
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
+                            OutlinedButton(onClick = onDelete, colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.error)) {
                                 Icon(Icons.Filled.Delete, "Delete", Modifier.size(18.dp))
                             }
                         }
@@ -440,24 +414,20 @@ internal fun ModelCard(
                 }
 
                 state is ModelState.LoadFailed -> {
-                    Text(
-                        "Load failed: ${state.error}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(scheme.errorContainer.copy(alpha = 0.3f))
+                            .padding(10.dp)
                     ) {
-                        Button(onClick = onLoad, modifier = Modifier.weight(1f), enabled = canRun) {
-                            Text("Retry")
-                        }
+                        Text("Load failed: ${state.error}", style = MaterialTheme.typography.bodySmall, color = scheme.error)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onLoad, modifier = Modifier.weight(1f), enabled = canRun) { Text("Retry") }
                         if (!config.isBundled) {
-                            OutlinedButton(
-                                onClick = onDelete,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                            ) {
+                            OutlinedButton(onClick = onDelete, colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.error)) {
                                 Icon(Icons.Filled.Delete, "Delete", Modifier.size(18.dp))
                             }
                         }
@@ -469,18 +439,17 @@ internal fun ModelCard(
 }
 
 @Composable
-private fun ModelSpec(label: String, value: String) {
-    Column {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium
-        )
+private fun ModelSpecPill(label: String, value: String, accentColor: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(accentColor.copy(alpha = 0.10f))
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accentColor)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+        }
     }
 }
 
@@ -491,140 +460,114 @@ internal fun DeviceResourceCard(
     deviceSummary: String,
     modifier: Modifier = Modifier
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
     val ramColor = when (memorySnapshot.pressure) {
-        MemoryPressure.NORMAL -> Color(0xFF69F0AE)
-        MemoryPressure.MODERATE -> Color(0xFFFFAB00)
-        MemoryPressure.CRITICAL -> Color(0xFFFF5252)
+        MemoryPressure.NORMAL -> Color(0xFF4CAF50)
+        MemoryPressure.MODERATE -> Color(0xFFFFB300)
+        MemoryPressure.CRITICAL -> scheme.error
     }
     val ramLabel = when (memorySnapshot.pressure) {
         MemoryPressure.NORMAL -> "Good"
         MemoryPressure.MODERATE -> "Getting low"
-        MemoryPressure.CRITICAL -> "Very low — close other apps"
+        MemoryPressure.CRITICAL -> "Very low"
     }
     val usedPercent = memorySnapshot.usedPercent
     val availableRamGB = memorySnapshot.availableMb / 1024f
 
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(16.dp))
+            .background(scheme.surfaceContainerLow)
     ) {
+        // Top glow from primary
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .background(Brush.verticalGradient(listOf(scheme.primary.copy(alpha = 0.09f), Color.Transparent)))
+        )
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Device summary row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                    modifier = Modifier.size(40.dp)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(scheme.primary.copy(alpha = 0.13f))
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.Memory, null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                    Icon(Icons.Filled.Memory, null, tint = scheme.primary, modifier = Modifier.size(22.dp))
                 }
-                Column {
-                    Text(
-                        deviceSummary,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(deviceSummary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Filled.Storage, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            "%.1f GB storage free".format(storageGB),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Icon(Icons.Filled.Storage, null, Modifier.size(11.dp), tint = scheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        Text("%.1f GB storage free".format(storageGB), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                     }
+                }
+                // RAM pressure badge
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(ramColor.copy(alpha = 0.13f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(ramLabel, style = MaterialTheme.typography.labelSmall, color = ramColor, fontWeight = FontWeight.SemiBold)
                 }
             }
 
+            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.25f))
+
             // Physical RAM bar
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            "RAM",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "· $ramLabel",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ramColor,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Text(
-                        "%.1f GB free".format(availableRamGB),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("RAM", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    Text("%.1f GB free".format(availableRamGB), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 }
                 LinearProgressIndicator(
                     progress = { usedPercent },
-                    modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)),
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                     color = ramColor,
-                    trackColor = ramColor.copy(alpha = 0.15f),
+                    trackColor = ramColor.copy(alpha = 0.13f),
                     strokeCap = StrokeCap.Round
                 )
             }
 
-            // RAM Boost / Swap — only show if present
+            // Swap bar — only if present
             if (memorySnapshot.hasSwap) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                 val swapUsed = memorySnapshot.swapTotalMb - memorySnapshot.swapFreeMb
-                val swapUsedPercent = if (memorySnapshot.swapTotalMb > 0)
-                    swapUsed.toFloat() / memorySnapshot.swapTotalMb else 0f
+                val swapUsedPercent = if (memorySnapshot.swapTotalMb > 0) swapUsed.toFloat() / memorySnapshot.swapTotalMb else 0f
                 val swapFreeGB = memorySnapshot.swapFreeMb / 1024f
                 val swapTotalGB = memorySnapshot.swapTotalMb / 1024f
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "RAM Boost (Swap)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "%.1f / %.1f GB".format(swapFreeGB, swapTotalGB),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.25f))
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("RAM Boost (Swap)", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text("%.1f / %.1f GB".format(swapFreeGB, swapTotalGB), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                     }
                     LinearProgressIndicator(
                         progress = { swapUsedPercent },
                         modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
-                        color = Color(0xFF7C4DFF).copy(alpha = 0.7f),
-                        trackColor = Color(0xFF7C4DFF).copy(alpha = 0.12f),
+                        color = scheme.tertiary,
+                        trackColor = scheme.tertiary.copy(alpha = 0.13f),
                         strokeCap = StrokeCap.Round
                     )
                     Text(
                         "Swap helps load larger models but is slower than physical RAM",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = scheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }

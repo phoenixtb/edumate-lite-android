@@ -59,6 +59,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -67,15 +70,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.foxbird.edgeai.model.ModelState
 import io.foxbird.doclibrary.data.local.entity.DocumentEntity
+import androidx.compose.foundation.border
 import io.foxbird.edumate.ui.components.ProcessingCard
 import io.foxbird.edumate.ui.components.deriveProcessingStep
 import io.foxbird.edumate.ui.components.QuickActionCard
 import io.foxbird.edumate.ui.components.SectionHeader
-import io.foxbird.edumate.ui.theme.EduBlue
-import io.foxbird.edumate.ui.theme.EduPurple
-import io.foxbird.edumate.ui.theme.EduPurpleLight
-import io.foxbird.edumate.ui.theme.EduTeal
 import io.foxbird.edumate.ui.theme.StatusActive
+import io.foxbird.edumate.ui.theme.appColors
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,13 +106,13 @@ fun HomeScreen(
                         Surface(
                             modifier = Modifier.size(34.dp),
                             shape = RoundedCornerShape(10.dp),
-                            color = EduPurple
+                            color = MaterialTheme.colorScheme.primary
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.School,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -139,7 +140,7 @@ fun HomeScreen(
                             contentDescription = "AI & Resources",
                             tint = when (inferenceModelState) {
                                 is ModelState.Ready -> StatusActive
-                                is ModelState.Loading -> EduPurpleLight
+                                is ModelState.Loading -> MaterialTheme.colorScheme.primary
                                 is ModelState.LoadFailed -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
@@ -151,7 +152,7 @@ fun HomeScreen(
                 )
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -225,7 +226,7 @@ fun HomeScreen(
                     icon = Icons.AutoMirrored.Filled.Chat,
                     title = "Ask AI",
                     subtitle = "Start a conversation",
-                    iconColor = EduPurple,
+                    iconColor = MaterialTheme.colorScheme.primary,
                     onClick = onNavigateToChat,
                     modifier = Modifier.weight(1f)
                 )
@@ -233,7 +234,7 @@ fun HomeScreen(
                     icon = Icons.Filled.Upload,
                     title = "Add Material",
                     subtitle = "PDF or image",
-                    iconColor = EduBlue,
+                    iconColor = MaterialTheme.colorScheme.tertiary,
                     onClick = onNavigateToLibrary,
                     modifier = Modifier.weight(1f)
                 )
@@ -251,7 +252,7 @@ fun HomeScreen(
                     icon = Icons.Filled.Description,
                     title = "Worksheet",
                     subtitle = "Generate practice",
-                    iconColor = EduTeal,
+                    iconColor = MaterialTheme.colorScheme.secondary,
                     onClick = onNavigateToWorksheet,
                     modifier = Modifier.weight(1f)
                 )
@@ -259,7 +260,7 @@ fun HomeScreen(
                     icon = Icons.Filled.AccountTree,
                     title = "Knowledge",
                     subtitle = "Explore concepts",
-                    iconColor = EduPurpleLight,
+                    iconColor = MaterialTheme.colorScheme.tertiary,
                     onClick = onNavigateToKnowledgeGraph,
                     modifier = Modifier.weight(1f)
                 )
@@ -288,7 +289,8 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Extra bottom room so the last card can scroll fully clear of the FAB
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
@@ -320,8 +322,18 @@ private fun AiStatusCard(
         label = "aiCardBg"
     )
 
+    val appColors = MaterialTheme.appColors
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            isModelFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.25f)
+            isModelReady -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+            else -> appColors.glassBorderDefault
+        },
+        label = "aiCardBorder"
+    )
+
     Card(
-        modifier = modifier,
+        modifier = modifier.border(1.dp, borderColor, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor)
     ) {
@@ -335,7 +347,7 @@ private fun AiStatusCard(
                     shape = CircleShape,
                     color = when {
                         isModelFailed -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                        isModelNotLoaded -> EduPurple.copy(alpha = 0.12f)
+                        isModelNotLoaded -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                         else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                     },
                     modifier = Modifier.size(44.dp)
@@ -356,7 +368,7 @@ private fun AiStatusCard(
                                 contentDescription = null,
                                 tint = when {
                                     isModelFailed -> MaterialTheme.colorScheme.error
-                                    isModelNotLoaded -> EduPurple
+                                    isModelNotLoaded -> MaterialTheme.colorScheme.primary
                                     else -> MaterialTheme.colorScheme.primary
                                 },
                                 modifier = Modifier.size(22.dp)
@@ -464,21 +476,21 @@ private fun StatsStrip(
                 icon = Icons.AutoMirrored.Filled.LibraryBooks,
                 value = "$materials",
                 label = "Materials",
-                tint = EduBlue
+                tint = MaterialTheme.colorScheme.tertiary
             )
             VerticalDivider(modifier = Modifier.height(32.dp), color = MaterialTheme.colorScheme.outlineVariant)
             StatItem(
                 icon = Icons.Filled.Widgets,
                 value = "$chunks",
                 label = "Chunks",
-                tint = EduPurple
+                tint = MaterialTheme.colorScheme.primary
             )
             VerticalDivider(modifier = Modifier.height(32.dp), color = MaterialTheme.colorScheme.outlineVariant)
             StatItem(
                 icon = Icons.AutoMirrored.Filled.Chat,
                 value = "$sessions",
                 label = "Sessions",
-                tint = EduTeal
+                tint = MaterialTheme.colorScheme.secondary
             )
         }
     }
@@ -508,34 +520,55 @@ private fun RecentMaterialCard(
     material: DocumentEntity,
     onClick: () -> Unit
 ) {
-    val typeIcon = when (material.sourceType.lowercase()) {
-        "pdf" -> Icons.Filled.PictureAsPdf
-        "image" -> Icons.Filled.Image
-        else -> Icons.Filled.Description
+    val (typeIcon, typeColor) = when (material.sourceType.lowercase()) {
+        "pdf" -> Icons.Filled.PictureAsPdf to Color(0xFFEF5350)
+        "image" -> Icons.Filled.Image to Color(0xFF42A5F5)
+        else -> Icons.Filled.Description to MaterialTheme.colorScheme.primary
     }
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
 
-    Card(
+    Box(
         modifier = Modifier
             .width(160.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+            .background(scheme.surfaceContainerLow)
+            .clickable(onClick = onClick)
+            // Bottom type-color accent line
+            .drawBehind {
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(typeColor, typeColor.copy(alpha = 0.3f)),
+                    ),
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 3.dp.toPx()),
+                    size = Size(size.width, 3.dp.toPx()),
+                )
+            }
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        // Top glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(
+                    Brush.verticalGradient(listOf(typeColor.copy(alpha = 0.09f), Color.Transparent))
+                )
+        )
+
+        Column(modifier = Modifier.padding(12.dp)) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(EduPurple.copy(alpha = 0.12f))
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(typeColor.copy(alpha = 0.15f))
             ) {
                 Icon(
                     imageVector = typeIcon,
                     contentDescription = null,
-                    tint = EduPurple,
-                    modifier = Modifier.size(20.dp)
+                    tint = typeColor,
+                    modifier = Modifier.size(22.dp)
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
@@ -545,13 +578,13 @@ private fun RecentMaterialCard(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface
+                color = scheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = material.sourceType.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = typeColor.copy(alpha = 0.75f)
             )
         }
     }

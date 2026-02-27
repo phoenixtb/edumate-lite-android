@@ -1,5 +1,7 @@
 package io.foxbird.edumate.feature.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -66,6 +69,7 @@ import io.foxbird.edumate.ui.components.IconContainer
 import io.foxbird.edumate.ui.components.SectionHeader
 import io.foxbird.edumate.ui.theme.StatusActive
 import io.foxbird.edumate.ui.theme.ThemeMode
+import io.foxbird.edumate.ui.theme.appColors
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -144,11 +148,12 @@ fun SettingsScreen(
 
         // ── 1. Appearance ──────────────────────────────────────────
         SectionHeader("Appearance")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -197,11 +202,12 @@ fun SettingsScreen(
 
         // ── 2. Processing ──────────────────────────────────────────
         SectionHeader("Processing")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -236,11 +242,12 @@ fun SettingsScreen(
 
         // ── 3. Developer ───────────────────────────────────────────
         SectionHeader("Developer")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -305,11 +312,12 @@ fun SettingsScreen(
 
         // ── 4. Data ────────────────────────────────────────────────
         SectionHeader("Data")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -374,11 +382,12 @@ fun SettingsScreen(
 
         // ── 6. About ───────────────────────────────────────────────
         SectionHeader("About")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -445,13 +454,16 @@ private fun AiModelsSummaryCard(
         MemoryPressure.CRITICAL -> Color(0xFFFF5252)
     }
 
+    val borderColor = if (isAnyReady) StatusActive.copy(alpha = 0.30f) else MaterialTheme.appColors.glassBorderDefault
     Card(
-        modifier = modifier.clickable(onClick = onManage),
+        modifier = modifier
+            .clickable(onClick = onManage)
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isAnyReady -> StatusActive.copy(alpha = 0.08f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.surfaceContainerLow
             }
         )
     ) {

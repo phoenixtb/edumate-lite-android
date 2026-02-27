@@ -123,11 +123,14 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
 
             // Infer dim: use cached value or divide evenly
             val dim = if (embeddingDim > 0) embeddingDim
-                      else if (flatList.size % texts.size == 0) flatList.size / texts.size
-                      else 0
+            else if (flatList.size % texts.size == 0) flatList.size / texts.size
+            else 0
 
             if (dim == 0 || flatList.size != dim * texts.size) {
-                Logger.w(TAG, "Unexpected batch response size ${flatList.size} for ${texts.size} texts — falling back to sequential")
+                Logger.w(
+                    TAG,
+                    "Unexpected batch response size ${flatList.size} for ${texts.size} texts — falling back to sequential"
+                )
                 sequentialFallback(texts).right()
             } else {
                 embeddingDim = dim
@@ -152,5 +155,7 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
 
     override fun getEmbeddingDimension(): Int = embeddingDim
 
-    override fun destroy() { unloadModel() }
+    override fun destroy() {
+        unloadModel()
+    }
 }

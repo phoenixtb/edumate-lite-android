@@ -3,9 +3,12 @@ package io.foxbird.edumate.feature.settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -30,8 +35,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewModule
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -47,6 +50,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +71,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.foxbird.edumate.ui.theme.appColors
 import io.foxbird.edgeai.engine.EngineOrchestrator
 import io.foxbird.edgeai.engine.ModelManager
 import io.foxbird.edgeai.model.ModelDownloader
@@ -123,6 +130,7 @@ fun DevToolsScreen(onBack: () -> Unit) {
     val tasks by taskQueue.tasks.collectAsState()
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Debug Console") },
@@ -138,7 +146,8 @@ fun DevToolsScreen(onBack: () -> Unit) {
                     IconButton(onClick = { refreshTrigger++ }) {
                         Icon(Icons.Filled.Refresh, "Refresh")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         }
     ) { padding ->
@@ -147,7 +156,7 @@ fun DevToolsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -302,68 +311,173 @@ private fun ChunkCard(
     isExpanded: Boolean,
     onToggleExpand: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        modifier = Modifier.fillMaxWidth()
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
+    val accentColor = scheme.tertiary
+    val hasEmbedding = chunk.embedding != null
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+            .background(scheme.surfaceContainerLow)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        // Top tinted glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.08f), Color.Transparent)))
+        )
+
+        Column {
+            // ── Header ────────────────────────────────────────────────────────────
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 4.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatusChip(
-                        text = "ID: ${chunk.id}",
-                        containerColor = Color(0xFF9C27B0).copy(alpha = 0.15f),
-                        textColor = Color(0xFF9C27B0)
+                Column(modifier = Modifier.weight(1f)) {
+                    // Material name as title
+                    Text(
+                        text = materialName ?: "Unknown source",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = scheme.onSurface,
                     )
-                    StatusChip(
-                        text = chunk.chunkType,
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        textColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    Spacer(Modifier.height(2.dp))
+                    // Subtitle: seq index + type
+                    Text(
+                        text = "Seq #${chunk.sequenceIndex} · ${chunk.chunkType}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor.copy(alpha = 0.8f),
                     )
                 }
-                IconButton(onClick = onToggleExpand, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(36.dp)) {
                     Icon(
-                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp
-                        else Icons.Filled.KeyboardArrowDown,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand"
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = scheme.onSurfaceVariant,
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // ── Metadata grid ─────────────────────────────────────────────────────
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                color = scheme.outlineVariant.copy(alpha = 0.3f),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                MetaChip(label = "ID", value = "${chunk.id}", accentColor = scheme.primary)
+                MetaChip(label = "Words", value = "${chunk.wordCount}", accentColor = accentColor)
+                MetaChip(label = "Tokens", value = "${chunk.tokenCount}", accentColor = accentColor)
+                MetaChip(
+                    label = "Conf",
+                    value = "%.0f%%".format(chunk.confidenceScore * 100),
+                    accentColor = when {
+                        chunk.confidenceScore >= 0.9 -> Color(0xFF4CAF50)
+                        chunk.confidenceScore >= 0.6 -> Color(0xFFFFAB00)
+                        else -> scheme.error
+                    }
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Embedding badge
+                MetaBadge(
+                    label = if (hasEmbedding) "Embedded" else "No embedding",
+                    positive = hasEmbedding,
+                    scheme = scheme,
+                )
+                if (chunk.isKeyPoint) {
+                    MetaBadge(label = "Key point", positive = true, scheme = scheme, overrideColor = Color(0xFFFFAB00))
+                }
+                chunk.pageNumber?.let {
+                    MetaBadge(label = "p.$it", positive = null, scheme = scheme)
+                }
+                MetaBadge(label = chunk.extractionMethod, positive = null, scheme = scheme)
+            }
 
+            // ── Content ───────────────────────────────────────────────────────────
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                color = scheme.outlineVariant.copy(alpha = 0.3f),
+            )
             if (!isExpanded) {
                 Text(
                     text = chunk.content,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = expandVertically(),
-                exit = shrinkVertically()
+                exit = shrinkVertically(),
             ) {
                 Text(
                     text = chunk.content,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun MetaChip(label: String, value: String, accentColor: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = accentColor,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
+    }
+}
+
+@Composable
+private fun MetaBadge(
+    label: String,
+    positive: Boolean?,
+    scheme: androidx.compose.material3.ColorScheme,
+    overrideColor: Color? = null,
+) {
+    val color = overrideColor ?: when (positive) {
+        true -> Color(0xFF4CAF50)
+        false -> scheme.error
+        null -> scheme.onSurfaceVariant.copy(alpha = 0.6f)
+    }
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -390,59 +504,55 @@ private fun StorageTab(
     val materialDbFraction = 0.3f
     val chatDbFraction = 0.2f
 
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            horizontal = 16.dp, vertical = 16.dp
-        )
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
     ) {
-        // Hero card
+        // Hero card — glass with primary glow
         item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, scheme.primary.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+                    .background(scheme.surfaceContainerLow)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp)
+                        .height(80.dp)
+                        .background(Brush.verticalGradient(listOf(scheme.primary.copy(alpha = 0.12f), Color.Transparent)))
+                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(24.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Storage,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(scheme.primary.copy(alpha = 0.15f))
+                    ) {
+                        Icon(Icons.Filled.Storage, null, Modifier.size(28.dp), tint = scheme.primary)
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = formatSize(totalSize),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        text = "Total App Storage",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
+                    Text(formatSize(totalSize), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Total App Storage", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                 }
             }
         }
 
         // Cache & Models
+        item { SectionHeader(title = "Cache & Models") }
         item {
-            SectionHeader(title = "Cache & Models")
-        }
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier.fillMaxWidth()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                    .background(scheme.surfaceContainerLow)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     StorageBar(
@@ -450,7 +560,7 @@ private fun StorageTab(
                         icon = Icons.Filled.Memory,
                         sizeText = formatSize(modelsSize),
                         percentage = (modelsSize / safeDivisor).coerceIn(0f, 1f),
-                        barColor = Color(0xFFE91E63)
+                        barColor = scheme.primary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     StorageBar(
@@ -458,22 +568,21 @@ private fun StorageTab(
                         icon = Icons.Filled.Folder,
                         sizeText = formatSize(otherCacheSize),
                         percentage = (otherCacheSize / safeDivisor).coerceIn(0f, 1f),
-                        barColor = Color(0xFFFF9800)
+                        barColor = scheme.secondary
                     )
                 }
             }
         }
 
         // Database
+        item { SectionHeader(title = "Database") }
         item {
-            SectionHeader(title = "Database")
-        }
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier.padding(bottom = 4.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                    .background(scheme.surfaceContainerLow)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     StorageBar(
@@ -481,7 +590,7 @@ private fun StorageTab(
                         icon = Icons.Filled.ViewModule,
                         sizeText = formatSize((dbSize * chunkDbFraction).toLong()),
                         percentage = (dbSize * chunkDbFraction / safeDivisor).coerceIn(0f, 1f),
-                        barColor = Color(0xFF2196F3)
+                        barColor = scheme.primary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     StorageBar(
@@ -489,7 +598,7 @@ private fun StorageTab(
                         icon = Icons.Filled.Description,
                         sizeText = formatSize((dbSize * materialDbFraction).toLong()),
                         percentage = (dbSize * materialDbFraction / safeDivisor).coerceIn(0f, 1f),
-                        barColor = Color(0xFF4CAF50)
+                        barColor = scheme.tertiary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     StorageBar(
@@ -497,28 +606,27 @@ private fun StorageTab(
                         icon = Icons.AutoMirrored.Filled.Chat,
                         sizeText = formatSize((dbSize * chatDbFraction).toLong()),
                         percentage = (dbSize * chatDbFraction / safeDivisor).coerceIn(0f, 1f),
-                        barColor = Color(0xFF9C27B0)
+                        barColor = scheme.secondary
                     )
                 }
             }
         }
 
         // Data Stats
+        item { SectionHeader(title = "Data Stats") }
         item {
-            SectionHeader(title = "Data Stats")
-        }
-        item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier.fillMaxWidth()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+                    .background(scheme.surfaceContainerLow)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     DataStatRow("Total Chunks", "$chunkCount")
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outlineVariant.copy(alpha = 0.3f))
                     DataStatRow("Total Materials", "$materialCount")
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = scheme.outlineVariant.copy(alpha = 0.3f))
                     DataStatRow("Total Conversations", "$conversationCount")
                 }
             }
@@ -562,34 +670,40 @@ private fun ProcessingTab(tasks: List<AiTask>) {
     val activeTasks = tasks.filter {
         it.status == TaskStatus.PENDING || it.status == TaskStatus.RUNNING
     }
+    val scheme = MaterialTheme.colorScheme
 
     if (activeTasks.isEmpty()) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Filled.Memory,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "No active tasks",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Brush.radialGradient(listOf(scheme.primary.copy(alpha = 0.12f), Color.Transparent)))
+                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(CircleShape)
+                            .background(scheme.primaryContainer.copy(alpha = 0.28f))
+                            .border(1.dp, scheme.primary.copy(alpha = 0.20f), CircleShape)
+                    ) {
+                        Icon(Icons.Filled.Memory, null, Modifier.size(32.dp), tint = scheme.primary.copy(alpha = 0.75f))
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Text("No active tasks", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = scheme.onSurface)
+                Spacer(Modifier.height(4.dp))
+                Text("Task queue is idle", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant.copy(alpha = 0.6f))
             }
         }
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = 16.dp, vertical = 16.dp
-            )
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
         ) {
             items(activeTasks, key = { it.id }) { task ->
                 TaskCard(task)
@@ -600,52 +714,92 @@ private fun ProcessingTab(tasks: List<AiTask>) {
 
 @Composable
 private fun TaskCard(task: AiTask) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        modifier = Modifier.fillMaxWidth()
+    val scheme = MaterialTheme.colorScheme
+    val appColors = MaterialTheme.appColors
+    val isRunning = task.status == TaskStatus.RUNNING
+    val accentColor = if (isRunning) scheme.primary else scheme.secondary
+    val progressPct = (task.progress * 100).toInt()
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, if (isRunning) scheme.primary.copy(alpha = 0.22f) else appColors.glassBorderDefault, RoundedCornerShape(14.dp))
+            .background(scheme.surfaceContainerLow)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        // Top glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.09f), Color.Transparent)))
+        )
+
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header row: spinner + title + status pill
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    strokeCap = StrokeCap.Round
-                )
-                Spacer(modifier = Modifier.width(12.dp))
+                if (isRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        strokeCap = StrokeCap.Round,
+                        color = scheme.primary,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(scheme.secondary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(Modifier.size(6.dp).clip(CircleShape).background(scheme.secondary))
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = task.title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
+                Spacer(Modifier.width(8.dp))
+                // Status pill
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = task.status.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
-            Text(
-                text = "Status: ${task.status.name.lowercase().replaceFirstChar { it.uppercase() }}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Progress: ${(task.progress * 100).toInt()}%",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            // Progress row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Progress", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant.copy(alpha = 0.7f))
+                Text("$progressPct%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = accentColor)
+            }
+            Spacer(Modifier.height(4.dp))
             LinearProgressIndicator(
                 progress = { task.progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp),
-                strokeCap = StrokeCap.Round
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
+                color = accentColor,
+                trackColor = accentColor.copy(alpha = 0.14f),
+                strokeCap = StrokeCap.Round,
             )
         }
     }

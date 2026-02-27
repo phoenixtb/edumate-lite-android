@@ -1,5 +1,6 @@
 package io.foxbird.edumate.feature.common.navigation
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,14 +10,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Schedule
@@ -39,24 +41,26 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.foxbird.edumate.ui.theme.EduPurple
-import io.foxbird.edumate.ui.theme.EduPurpleLight
 
 private val NAV_BAR_HEIGHT = 64.dp
 private val FAB_SIZE = 56.dp
-private val FAB_RADIUS = 28.dp  // FAB_SIZE / 2
+private val FAB_RADIUS = 28.dp
 
 @Composable
 fun CurvedBottomBar(
@@ -66,79 +70,132 @@ fun CurvedBottomBar(
 ) {
     val density = LocalDensity.current
     val cornerRadiusPx = with(density) { 20.dp.toPx() }
-    val dockRadiusPx = with(density) { 32.dp.toPx() }  // FAB radius + 4dp gap
+    val dockRadiusPx = with(density) { 32.dp.toPx() }
+    val scheme = MaterialTheme.colorScheme
 
     Box(modifier = modifier.fillMaxWidth()) {
-        // Spacer pushes the nav bar down by FAB_RADIUS, so FAB center aligns with nav bar top edge
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(FAB_RADIUS))
-
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(NAV_BAR_HEIGHT)
+                .clip(BottomNavShape(cornerRadiusPx, dockRadiusPx))
+        ) {
+            // ── Glass background ──────────────────────────────────────────────
+            // RenderEffect blur (API 31+) is applied to this layer only — it softens
+            // the gradient itself, giving a frosted appearance at the clipped edges.
+            // The nav items (drawn after this box) remain sharp.
             Box(
                 modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // BlurEffect in Compose uses RenderEffect under the hood (API 31+).
+                        // Applied only to this background layer; nav items above stay sharp.
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            renderEffect = BlurEffect(18f, 18f, TileMode.Clamp)
+                        }
+                    }
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                scheme.surfaceContainerHigh.copy(alpha = 0.58f),
+                                scheme.surfaceContainer.copy(alpha = 0.78f),
+                            )
+                        )
+                    )
+            )
+
+            // ── Subtle gradient overlay: slightly lighter at top (catches "light") ──
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.06f),
+                                Color.Transparent,
+                            )
+                        )
+                    )
+            )
+
+            // ── Glass top-edge line ───────────────────────────────────────────
+            Spacer(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .height(NAV_BAR_HEIGHT)
-                    .clip(BottomNavShape(cornerRadiusPx, dockRadiusPx))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .height(1.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                scheme.primary.copy(alpha = 0.30f),
+                                scheme.outlineVariant.copy(alpha = 0.50f),
+                                scheme.primary.copy(alpha = 0.30f),
+                                Color.Transparent,
+                            )
+                        )
+                    )
+            )
+
+            // ── Nav items (sharp — not inside the blurred layer) ──────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    NavBarItem(
-                        icon = Icons.Outlined.Home,
-                        selectedIcon = Icons.Filled.Home,
-                        label = "Home",
-                        selected = selectedRoute == NavRoutes.HOME,
-                        onClick = { onNavigate(NavRoutes.HOME) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    NavBarItem(
-                        icon = Icons.Outlined.Schedule,
-                        selectedIcon = Icons.Filled.Schedule,
-                        label = "History",
-                        selected = selectedRoute == NavRoutes.HISTORY,
-                        onClick = { onNavigate(NavRoutes.HISTORY) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    // Center slot — hidden behind the FAB / cutout
-                    Spacer(modifier = Modifier.weight(1f))
-                    NavBarItem(
-                        icon = Icons.AutoMirrored.Outlined.LibraryBooks,
-                        selectedIcon = Icons.AutoMirrored.Filled.LibraryBooks,
-                        label = "Library",
-                        selected = selectedRoute == NavRoutes.LIBRARY,
-                        onClick = { onNavigate(NavRoutes.LIBRARY) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    NavBarItem(
-                        icon = Icons.Outlined.Settings,
-                        selectedIcon = Icons.Filled.Settings,
-                        label = "Settings",
-                        selected = selectedRoute == NavRoutes.SETTINGS,
-                        onClick = { onNavigate(NavRoutes.SETTINGS) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                NavBarItem(
+                    icon = Icons.Outlined.Home,
+                    selectedIcon = Icons.Filled.Home,
+                    label = "Home",
+                    selected = selectedRoute == NavRoutes.HOME,
+                    onClick = { onNavigate(NavRoutes.HOME) },
+                    modifier = Modifier.weight(1f)
+                )
+                NavBarItem(
+                    icon = Icons.Outlined.Schedule,
+                    selectedIcon = Icons.Filled.Schedule,
+                    label = "History",
+                    selected = selectedRoute == NavRoutes.HISTORY,
+                    onClick = { onNavigate(NavRoutes.HISTORY) },
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                NavBarItem(
+                    icon = Icons.AutoMirrored.Outlined.LibraryBooks,
+                    selectedIcon = Icons.AutoMirrored.Filled.LibraryBooks,
+                    label = "Library",
+                    selected = selectedRoute == NavRoutes.LIBRARY,
+                    onClick = { onNavigate(NavRoutes.LIBRARY) },
+                    modifier = Modifier.weight(1f)
+                )
+                NavBarItem(
+                    icon = Icons.Outlined.Settings,
+                    selectedIcon = Icons.Filled.Settings,
+                    label = "Settings",
+                    selected = selectedRoute == NavRoutes.SETTINGS,
+                    onClick = { onNavigate(NavRoutes.SETTINGS) },
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
 
-        // FAB — center at the nav bar top edge (TopCenter of this Box = FAB_RADIUS above nav bar)
+        // ── FAB — floats above nav bar via negative offset ────────────────────
         FloatingActionButton(
             onClick = { onNavigate("new_chat") },
             shape = CircleShape,
-            containerColor = EduPurple,
+            containerColor = MaterialTheme.colorScheme.primary,
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 6.dp,
                 pressedElevation = 8.dp
             ),
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .offset(y = -FAB_RADIUS)
                 .size(FAB_SIZE)
         ) {
             Icon(
                 imageVector = Icons.Filled.AddComment,
                 contentDescription = "New Chat",
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -154,7 +211,7 @@ private fun NavBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val tint = if (selected) EduPurpleLight else Color(0xFF948F99)
+    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -188,8 +245,6 @@ private fun NavBarItem(
 /**
  * Custom Shape that carves a centered semicircular cutout from the top edge of the nav bar,
  * with smooth bezier transitions on both sides of the cutout.
- *
- * Based on: https://proandroiddev.com/creating-a-modern-bottom-navigation-bar-with-a-curved-cut-out-for-a-docked-floating-action-button-1e4455413024
  */
 private class BottomNavShape(
     private val cornerRadius: Float,
@@ -198,7 +253,6 @@ private class BottomNavShape(
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val cx = size.width / 2f
 
-        // Base rounded rectangle
         val baseRect = Path().apply {
             addRoundRect(
                 RoundRect(
@@ -209,8 +263,6 @@ private class BottomNavShape(
             )
         }
 
-        // Left side transition: subtract the difference between a rect with a small inner corner
-        // and one without, to create a smooth curve into the cutout
         val rect1 = Path().apply {
             addRoundRect(
                 RoundRect(
@@ -230,7 +282,6 @@ private class BottomNavShape(
         }
         val rect1B = Path.combine(PathOperation.Difference, rect1, rect1A)
 
-        // Right side transition
         val rect2 = Path().apply {
             addRoundRect(
                 RoundRect(
@@ -250,7 +301,6 @@ private class BottomNavShape(
         }
         val rect2B = Path.combine(PathOperation.Difference, rect2, rect2A)
 
-        // Circle cutout centered at top edge (y=0) of the nav bar
         val circle = Path().apply {
             addOval(
                 Rect(

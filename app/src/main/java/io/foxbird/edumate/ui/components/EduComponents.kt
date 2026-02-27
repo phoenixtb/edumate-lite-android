@@ -47,11 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.foxbird.edumate.ui.theme.EduBlue
-import io.foxbird.edumate.ui.theme.EduPurple
-import io.foxbird.edumate.ui.theme.EduPurpleDark
-import io.foxbird.edumate.ui.theme.EduPurpleLight
-import io.foxbird.edumate.ui.theme.PipelineComplete
+import io.foxbird.edumate.ui.theme.appColors
 
 /**
  * Full-width gradient header with brand color, used at top of Home and Library screens.
@@ -61,12 +57,17 @@ fun GradientHeader(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val scheme = MaterialTheme.colorScheme
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(EduPurpleDark, EduPurple, EduPurpleLight)
+                    colors = listOf(
+                        scheme.primaryContainer,
+                        scheme.primary.copy(alpha = 0.85f),
+                        scheme.primary,
+                    )
                 )
             )
             .padding(horizontal = 20.dp, vertical = 24.dp)
@@ -273,7 +274,7 @@ fun QuickActionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = modifier
             .clickable(onClick = onClick)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.appColors.glassBorderDefault, RoundedCornerShape(16.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Icon with subtle glow behind it
@@ -344,14 +345,15 @@ fun PipelineStep(
         label = "pulseAlpha"
     )
 
+    val appColors = MaterialTheme.appColors
     val circleBg = when (state) {
-        PipelineStepState.COMPLETED -> PipelineComplete
-        PipelineStepState.ACTIVE    -> EduPurple
+        PipelineStepState.COMPLETED -> appColors.stepComplete
+        PipelineStepState.ACTIVE    -> appColors.stepActive
         PipelineStepState.PENDING   -> MaterialTheme.colorScheme.surfaceContainerHighest
     }
     val labelColor = when (state) {
-        PipelineStepState.COMPLETED -> PipelineComplete
-        PipelineStepState.ACTIVE    -> EduPurpleLight
+        PipelineStepState.COMPLETED -> appColors.stepComplete
+        PipelineStepState.ACTIVE    -> MaterialTheme.colorScheme.primary
         PipelineStepState.PENDING   -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
     }
 
@@ -362,7 +364,7 @@ fun PipelineStep(
                 Box(
                     modifier = Modifier
                         .size(42.dp)
-                        .background(EduPurple.copy(alpha = pulseAlpha * 0.5f), CircleShape)
+                        .background(appColors.stepActive.copy(alpha = pulseAlpha * 0.5f), CircleShape)
                 )
             }
             Box(
@@ -373,7 +375,7 @@ fun PipelineStep(
                     PipelineStepState.COMPLETED ->
                         Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
                     PipelineStepState.ACTIVE ->
-                        CircularProgressIndicator(strokeWidth = 2.dp, color = Color.White, modifier = Modifier.size(14.dp))
+                        CircularProgressIndicator(strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
                     PipelineStepState.PENDING ->
                         Text("$stepNumber", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -401,38 +403,40 @@ fun ProcessingCard(
         .coerceAtLeast(0)
     val pct = (progress * 100).toInt()
 
+    val appColors = MaterialTheme.appColors
+    val scheme = MaterialTheme.colorScheme
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
         modifier = modifier
             .fillMaxWidth()
             .border(
                 width = 1.dp,
                 brush = Brush.linearGradient(
-                    listOf(EduPurple.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    listOf(appColors.glassBorderAccent, appColors.glassBorderDefault)
                 ),
                 shape = RoundedCornerShape(20.dp)
             )
     ) {
         Box {
-            // Ambient purple glow at top
+            // Ambient glow at top — derived from primary, very subtle
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(110.dp)
-                    .background(Brush.verticalGradient(listOf(EduPurple.copy(alpha = 0.08f), Color.Transparent)))
+                    .background(Brush.verticalGradient(listOf(appColors.primaryGlow, Color.Transparent)))
             )
 
             Column(modifier = Modifier.padding(16.dp)) {
                 // ── Header ──────────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(contentAlignment = Alignment.Center) {
-                        Box(modifier = Modifier.size(44.dp).background(EduPurple.copy(alpha = 0.18f), CircleShape))
+                        Box(modifier = Modifier.size(44.dp).background(appColors.glassBorderAccent, CircleShape))
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(36.dp).background(EduPurple.copy(alpha = 0.28f), CircleShape)
+                            modifier = Modifier.size(36.dp).background(scheme.primary.copy(alpha = 0.28f), CircleShape)
                         ) {
-                            CircularProgressIndicator(strokeWidth = 2.dp, color = EduPurpleLight, modifier = Modifier.size(16.dp))
+                            CircularProgressIndicator(strokeWidth = 2.dp, color = scheme.primary, modifier = Modifier.size(16.dp))
                         }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
@@ -462,10 +466,10 @@ fun ProcessingCard(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .background(EduPurple.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                            .background(appColors.glassBorderAccent, RoundedCornerShape(12.dp))
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
-                        Text("$pct%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = EduPurpleLight)
+                        Text("$pct%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = scheme.primary)
                     }
                 }
 
@@ -487,7 +491,7 @@ fun ProcessingCard(
                                     .height(2.dp)
                                     .weight(0.4f)
                                     .background(
-                                        if (index < currentStepIndex) PipelineComplete.copy(alpha = 0.7f)
+                                        if (index < currentStepIndex) appColors.stepComplete.copy(alpha = 0.7f)
                                         else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                                         RoundedCornerShape(1.dp)
                                     )
@@ -512,13 +516,13 @@ fun ProcessingCard(
                 // ── Gradient progress bar ────────────────────────────
                 Box(
                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .background(scheme.surfaceContainerHighest)
                 ) {
                     val p = progress.coerceIn(0f, 1f)
                     if (p > 0f) {
                         Box(
                             modifier = Modifier.fillMaxWidth(p).fillMaxHeight()
-                                .background(Brush.horizontalGradient(listOf(EduPurple, EduBlue)))
+                                .background(Brush.horizontalGradient(listOf(appColors.progressStart, appColors.progressEnd)))
                         )
                     }
                 }
