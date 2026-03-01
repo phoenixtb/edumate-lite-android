@@ -1,9 +1,6 @@
-// Placeholder module — no implementation yet.
-// Future: implement IAgentOrchestrator using Koog (github.com/JetBrains/koog)
-// Koog v0.6.2 (Feb 2026) — Kotlin multiplatform, Android-compatible, Apache 2.0
-// Will wrap EngineOrchestrator as a KoogLiteRtLlm provider for multi-step tool-use agents.
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -14,9 +11,23 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/DEPENDENCIES"
+        }
+    }
 }
 
 dependencies {
     api(project(":edge-ai-core"))
     api(project(":doc-library"))
+
+    // Koog — Kotlin-native AI agent framework (JVM variant resolves for Android)
+    implementation(libs.koog.agents)
+
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
 }

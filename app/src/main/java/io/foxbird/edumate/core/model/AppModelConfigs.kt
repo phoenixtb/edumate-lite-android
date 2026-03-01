@@ -64,7 +64,25 @@ object AppModelConfigs {
         engineType = EngineType.LLAMA_CPP
     )
 
-    val ALL_INFERENCE = listOf(GEMMA_3N_E2B_LITERT, GEMMA_2B, QWEN_1_5B)
+    /**
+     * Agent-optimised tool-calling model — LFM2 1.2B Instruct (downloadable).
+     * ~900 MB RAM (Q4_K_M). Designed explicitly for function-calling on edge devices.
+     * Used by agent-core as the reasoning backbone for multi-step agentic workflows.
+     */
+    val LFM2_1_2B_TOOL = ModelConfig(
+        id = "lfm2-1.2b-tool-q4km",
+        name = "LFM2 1.2B Tool",
+        description = "Agentic tool-calling model, ~900 MB",
+        huggingFaceRepo = "LiquidAI/LFM2-1.2B-Tool-GGUF",
+        filename = "LFM2-1.2B-Tool-Q4_K_M.gguf",
+        fileSizeMB = 900,
+        requiredRamGB = 2,
+        contextLength = 8192,
+        engineType = EngineType.LLAMA_CPP,
+        isBundled = false
+    )
+
+    val ALL_INFERENCE = listOf(GEMMA_3N_E2B_LITERT, GEMMA_2B, QWEN_1_5B, LFM2_1_2B_TOOL)
     val ALL_EMBEDDING = listOf(EMBEDDING_GEMMA_LITERT)
     val ALL = ALL_INFERENCE + ALL_EMBEDDING
 

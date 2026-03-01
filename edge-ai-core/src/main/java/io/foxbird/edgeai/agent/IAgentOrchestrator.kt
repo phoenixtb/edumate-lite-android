@@ -1,14 +1,20 @@
 package io.foxbird.edgeai.agent
 
+import kotlinx.coroutines.flow.SharedFlow
+
 /**
- * Future contract for multi-step agentic workflows.
+ * Contract for multi-step agentic workflows.
  *
- * Planned implementation: wrap [io.foxbird.edgeai.engine.EngineOrchestrator] as a
- * KoogLiteRtLlm provider using JetBrains Koog (github.com/JetBrains/koog, Apache 2.0).
- * Koog v0.6.2 supports Kotlin Multiplatform including Android and provides tool-use,
- * agent state persistence, retry, and observability out of the box.
+ * Implementation: EduMateAgentOrchestrator in :agent-core wraps EngineOrchestrator
+ * as a Koog PromptExecutor using JetBrains Koog (github.com/JetBrains/koog, Apache 2.0).
  */
 interface IAgentOrchestrator {
+    /** Emits intermediate steps (tool calls, results) while [runAgent] is executing. */
+    val agentSteps: SharedFlow<AgentStep>
+
+    /** Returns true if the underlying inference engine has a model loaded and ready. */
+    fun isReady(): Boolean
+
     suspend fun runAgent(goal: String, tools: List<AgentTool>): AgentResult
 }
 
@@ -21,4 +27,10 @@ data class AgentTool(
 sealed class AgentResult {
     data class Success(val output: String, val toolsUsed: List<String>) : AgentResult()
     data class Failure(val reason: String) : AgentResult()
+}
+
+sealed class AgentStep {
+    data class ToolCalling(val toolName: String, val args: String) : AgentStep()
+    data class ToolResult(val toolName: String, val result: String) : AgentStep()
+    data class Thinking(val text: String) : AgentStep()
 }

@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.foxbird.doclibrary.domain.rag.IRagEngine
 import io.foxbird.doclibrary.domain.rag.SearchResult
+import io.foxbird.edgeai.agent.AgentResult
+import io.foxbird.edgeai.agent.AgentStep
+import io.foxbird.edgeai.agent.IAgentOrchestrator
 import io.foxbird.edgeai.util.Logger
 import io.foxbird.edumate.core.util.AppConstants
 import io.foxbird.edumate.data.local.entity.MessageEntity
@@ -19,20 +22,32 @@ data class ChatMessage(
     val role: String,
     val content: String,
     val isStreaming: Boolean = false,
-    val sourceChunks: List<SearchResult> = emptyList()
+    val sourceChunks: List<SearchResult> = emptyList(),
+    val agentSteps: List<AgentStepDisplay> = emptyList()
 )
+
+data class AgentStepDisplay(
+    val label: String,
+    val detail: String,
+    val type: AgentStepType
+)
+
+enum class AgentStepType { TOOL_CALL, TOOL_RESULT, THINKING }
 
 data class ChatUiState(
     val conversationId: Long = -1L,
     val title: String = "New Chat",
     val isGenerating: Boolean = false,
+    val isAgentMode: Boolean = false,
+    val isModelReady: Boolean = false,
     val error: String? = null,
     val documentFilterIds: List<Long> = emptyList()
 )
 
 class ChatViewModel(
     private val conversationManager: ConversationManager,
-    private val ragEngine: IRagEngine
+    private val ragEngine: IRagEngine,
+    private val agentOrchestrator: IAgentOrchestrator? = null
 ) : ViewModel() {
 
     companion object {
@@ -69,7 +84,27 @@ class ChatViewModel(
         }
     }
 
+    fun toggleAgentMode() {
+        val newAgentMode = !_uiState.value.isAgentMode
+        _uiState.value = _uiState.value.copy(
+            isAgentMode = newAgentMode,
+            isModelReady = if (newAgentMode) agentOrchestrator?.isReady() == true else false
+        )
+    }
+
     fun sendMessage(content: String) {
+        if (_uiState.value.isAgentMode && agentOrchestrator != null) {
+            sendAgentMessage(content)
+        } else {
+            sendRagMessage(content)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Standard RAG mode
+    // -------------------------------------------------------------------------
+
+    private fun sendRagMessage(content: String) {
         val convId = _uiState.value.conversationId
         if (convId == -1L || content.isBlank()) return
 
@@ -128,6 +163,74 @@ class ChatViewModel(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Agent mode
+    // -------------------------------------------------------------------------
+
+    private fun sendAgentMessage(content: String) {
+        val convId = _uiState.value.conversationId
+        val orchestrator = agentOrchestrator ?: return
+        if (convId == -1L || content.isBlank()) return
+
+        generateJob = viewModelScope.launch {
+            try {
+                conversationManager.addMessage(convId, "user", content)
+                _messages.value = _messages.value + ChatMessage(role = "user", content = content)
+                _uiState.value = _uiState.value.copy(isGenerating = true, error = null)
+
+                if (_messages.value.size == 1) {
+                    conversationManager.autoGenerateTitle(convId, content)
+                }
+
+                val agentStepsAccumulated = mutableListOf<AgentStepDisplay>()
+
+                // Placeholder must be in the list before stepsJob starts updating it
+                val placeholderMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
+                _messages.value = _messages.value + placeholderMsg
+
+                val stepsJob = launch {
+                    orchestrator.agentSteps.collect { step ->
+                        val display = step.toDisplay()
+                        agentStepsAccumulated.add(display)
+                        val placeholder = _messages.value.lastOrNull()
+                        if (placeholder?.role == "assistant") {
+                            _messages.value = _messages.value.dropLast(1) +
+                                placeholder.copy(agentSteps = agentStepsAccumulated.toList())
+                        }
+                    }
+                }
+
+                val result = orchestrator.runAgent(content, emptyList())
+                stepsJob.cancel()
+
+                val finalContent = when (result) {
+                    is AgentResult.Success -> result.output
+                    is AgentResult.Failure -> when {
+                        result.reason.contains("finish in given number of steps", ignoreCase = true) ->
+                            "I ran out of steps before finishing. Try a more specific question or increase the step limit."
+                        else -> "I couldn't complete that: ${result.reason}"
+                    }
+                }
+
+                conversationManager.addMessage(convId, "assistant", finalContent)
+                _messages.value = _messages.value.dropLast(1) +
+                    placeholderMsg.copy(
+                        content = finalContent,
+                        isStreaming = false,
+                        agentSteps = agentStepsAccumulated.toList()
+                    )
+                _uiState.value = _uiState.value.copy(isGenerating = false)
+
+            } catch (e: Exception) {
+                Logger.e(TAG, "Agent run failed", e)
+                _uiState.value = _uiState.value.copy(isGenerating = false, error = e.message)
+                if (_messages.value.lastOrNull()?.isStreaming == true) {
+                    _messages.value = _messages.value.dropLast(1)
+                }
+            }
+        }
+    }
+
     fun cancelGeneration() {
         generateJob?.cancel()
         _uiState.value = _uiState.value.copy(isGenerating = false)
@@ -149,4 +252,25 @@ class ChatViewModel(
     }
 
     private fun MessageEntity.toChatMessage() = ChatMessage(id = id, role = role, content = content)
+
+    private fun AgentStep.toDisplay(): AgentStepDisplay = when (this) {
+        is AgentStep.ToolCalling -> AgentStepDisplay(
+            label = "Using $toolName",
+            detail = args.cleanStepText(80),
+            type = AgentStepType.TOOL_CALL
+        )
+        is AgentStep.ToolResult -> AgentStepDisplay(
+            label = "$toolName result",
+            detail = result.cleanStepText(120),
+            type = AgentStepType.TOOL_RESULT
+        )
+        is AgentStep.Thinking -> AgentStepDisplay(
+            label = "Reasoning",
+            detail = text.cleanStepText(120),
+            type = AgentStepType.THINKING
+        )
+    }
+
+    private fun String.cleanStepText(limit: Int): String =
+        this.replace("\\n", "\n").replace("\\t", " ").trim().take(limit)
 }

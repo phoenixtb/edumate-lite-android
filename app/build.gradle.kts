@@ -48,6 +48,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/DEPENDENCIES"
         }
     }
 }
@@ -58,6 +61,9 @@ dependencies {
 
     // Edge AI Core (engines, model management, orchestration)
     implementation(project(":edge-ai-core"))
+
+    // Agent Core (Koog-backed on-device agentic workflows)
+    implementation(project(":agent-core"))
 
     // AndroidX Core
     implementation(libs.androidx.core.ktx)

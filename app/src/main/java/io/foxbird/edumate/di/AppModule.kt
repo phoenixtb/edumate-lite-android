@@ -5,6 +5,8 @@ import io.foxbird.doclibrary.data.local.DocumentDatabase
 import io.foxbird.doclibrary.di.documentLibraryKoinModules
 import io.foxbird.doclibrary.domain.rag.IRagEngine
 import io.foxbird.doclibrary.domain.rag.RagConfig
+import io.foxbird.agentcore.EduMateAgentOrchestrator
+import io.foxbird.edgeai.agent.IAgentOrchestrator
 import io.foxbird.edgeai.embedding.EmbeddingService
 import io.foxbird.edgeai.embedding.IEmbeddingService
 import io.foxbird.edgeai.engine.EngineOrchestrator
@@ -93,6 +95,13 @@ val domainModule = module {
         )
     }
     single { WorksheetService(androidContext(), get<IRagEngine>(), get<EngineOrchestrator>()) }
+    single<IAgentOrchestrator> {
+        EduMateAgentOrchestrator(
+            orchestrator = get<EngineOrchestrator>(),
+            ragEngine = get<IRagEngine>(),
+            memoryMonitor = get<MemoryMonitor>()
+        )
+    }
 }
 
 val viewModelModule = module {
@@ -108,7 +117,7 @@ val viewModelModule = module {
         )
     }
     viewModel { OnboardingViewModel(get(), get()) }
-    viewModel { ChatViewModel(get(), get<IRagEngine>()) }
+    viewModel { ChatViewModel(get(), get<IRagEngine>(), get<IAgentOrchestrator>()) }
     viewModel { KnowledgeGraphViewModel(get()) }
     viewModel { WorksheetViewModel(get(), get<io.foxbird.doclibrary.data.repository.DocumentRepository>()) }
     viewModel {

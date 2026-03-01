@@ -55,6 +55,9 @@ mediapipeTasksGenai = "0.10.32"
 # PDF
 pdfboxAndroid = "2.0.27.0"
 
+# Koog — Kotlin-native AI agent framework
+koog = "0.6.3"
+
 # Background Work
 workManager = "2.10.2"
 
@@ -137,6 +140,9 @@ mediapipe-tasks-genai = { group = "com.google.mediapipe", name = "tasks-genai", 
 
 # PDF
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
+
+# Koog AI Agent Framework
+koog-agents = { group = "ai.koog", name = "koog-agents", version.ref = "koog" }
 
 # Background Work
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
