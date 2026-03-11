@@ -1,5 +1,8 @@
 package io.foxbird.edgeai.engine
 
+import android.graphics.Bitmap
+import arrow.core.left
+import io.foxbird.edgeai.util.AppError
 import io.foxbird.edgeai.util.AppResult
 import kotlinx.coroutines.flow.Flow
 
@@ -25,6 +28,19 @@ interface GenerationEngine {
 
     fun cancelGeneration()
     fun destroy()
+
+    /** Returns true if this engine supports multimodal image+text prompts. Default: false. */
+    fun supportsVision(): Boolean = false
+
+    /**
+     * Generates a text response from a prompt combined with an image.
+     * Default implementation returns an error; override in vision-capable engines.
+     */
+    suspend fun generateWithImage(
+        prompt: String,
+        bitmap: Bitmap,
+        params: GenerationParams = GenerationParams()
+    ): AppResult<String> = AppError.Llm.GenerationFailed("Vision not supported by this engine").left()
 }
 
 data class EngineCapabilities(

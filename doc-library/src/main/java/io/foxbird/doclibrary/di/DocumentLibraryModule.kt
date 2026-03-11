@@ -14,7 +14,11 @@ import io.foxbird.doclibrary.domain.engine.ChunkingEngine
 import io.foxbird.doclibrary.domain.engine.IChunkingEngine
 import io.foxbird.doclibrary.domain.engine.KeywordExtractor
 import io.foxbird.doclibrary.domain.engine.OrchestratorTokenCounter
+import io.foxbird.doclibrary.domain.extractor.ExtractionStrategySelector
+import io.foxbird.doclibrary.domain.extractor.OcrPageExtractor
+import io.foxbird.doclibrary.domain.extractor.VlmPageExtractor
 import io.foxbird.doclibrary.domain.processor.DocumentProcessor
+import io.foxbird.doclibrary.domain.processor.DocumentProcessorConfig
 import io.foxbird.doclibrary.domain.processor.IDocumentProcessor
 import io.foxbird.doclibrary.domain.rag.IRagEngine
 import io.foxbird.doclibrary.domain.rag.RagConfig
@@ -24,8 +28,11 @@ import io.foxbird.doclibrary.domain.service.ConceptExtractor
 import io.foxbird.doclibrary.domain.task.TaskQueue
 import io.foxbird.doclibrary.viewmodel.DocumentDetailViewModel
 import io.foxbird.doclibrary.viewmodel.LibraryViewModel
+import io.foxbird.doclibrary.config.FeatureFlags
 import io.foxbird.edgeai.embedding.IEmbeddingService
 import io.foxbird.edgeai.engine.EngineOrchestrator
+import io.foxbird.edgeai.engine.ITextGenerator
+import io.foxbird.edgeai.engine.IVisionEngine
 import kotlinx.coroutines.CoroutineScope
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
@@ -35,7 +42,9 @@ import org.koin.dsl.module
 
 private val documentDatabaseModule = module {
     single {
-        Room.databaseBuilder(androidContext(), DocumentDatabase::class.java, "doc_library.db").build()
+        Room.databaseBuilder(androidContext(), DocumentDatabase::class.java, "doc_library.db")
+            .addMigrations(DocumentDatabase.MIGRATION_1_2)
+            .build()
     }
     single { get<DocumentDatabase>().documentDao() }
     single { get<DocumentDatabase>().chunkDao() }
@@ -56,6 +65,18 @@ private val documentDomainModule = module {
     single { BM25Scorer() }
     single { OrchestratorTokenCounter(get<EngineOrchestrator>()) }
     single<IChunkingEngine> { ChunkingEngine(get<OrchestratorTokenCounter>()) }
+    single { ConceptExtractor(get<ITextGenerator>(), get()) }
+    single { TaskQueue(get<CoroutineScope>(named("appScope"))) }
+
+    // Processor config — host apps override this singleton to tune chunking/embedding behaviour.
+    single { getOrNull<DocumentProcessorConfig>() ?: DocumentProcessorConfig() }
+
+    // Extraction strategy — feature-flagged off by default; VLM activates when flag + engine are ready.
+    single { FeatureFlags() }
+    single { OcrPageExtractor() }
+    single { VlmPageExtractor(get<IVisionEngine>(), get<FeatureFlags>()) }
+    single { ExtractionStrategySelector(get<OcrPageExtractor>(), get<VlmPageExtractor>()) }
+
     single<IDocumentProcessor> {
         DocumentProcessor(
             pdfAdapter = get(),
@@ -66,11 +87,14 @@ private val documentDomainModule = module {
             keywordExtractor = get(),
             documentRepository = get<DocumentRepository>(),
             chunkRepository = get<ChunkRepository>(),
-            pageDao = get()
+            pageDao = get(),
+            conceptExtractor = get(),
+            taskQueue = get(),
+            orchestrator = get<EngineOrchestrator>(),
+            strategySelector = get<ExtractionStrategySelector>(),
+            config = get<DocumentProcessorConfig>()
         )
     }
-    single { ConceptExtractor(get<EngineOrchestrator>(), get()) }
-    single { TaskQueue(get<CoroutineScope>(named("appScope"))) }
 }
 
 private val documentRagModule = module {
@@ -92,6 +116,7 @@ private val documentViewModelModule = module {
         LibraryViewModel(
             documentRepository = get<DocumentRepository>(),
             documentProcessor = get<IDocumentProcessor>(),
+            taskQueue = get(),
             appScope = get<CoroutineScope>(named("appScope"))
         )
     }
@@ -108,10 +133,11 @@ private val documentViewModelModule = module {
 /**
  * Returns all Koin modules for the doc-library.
  * The host app must also provide:
- *   - [EngineOrchestrator] (from :edge-ai-core's engine module)
+ *   - [EngineOrchestrator] (from :edge-ai-core)
  *   - [IEmbeddingService] (from :edge-ai-core)
  *   - [CoroutineScope] qualified with named("appScope")
  *   - Optionally: [RagConfig] (defaults to generic prompt if not provided)
+ *   - Optionally: [DocumentProcessorConfig] (defaults to standard chunk/embedding sizes if not provided)
  */
 fun documentLibraryKoinModules(): List<Module> = listOf(
     documentDatabaseModule,
@@ -120,4 +146,3 @@ fun documentLibraryKoinModules(): List<Module> = listOf(
     documentRagModule,
     documentViewModelModule
 )
-

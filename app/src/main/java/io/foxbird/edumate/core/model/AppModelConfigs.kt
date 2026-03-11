@@ -51,17 +51,42 @@ object AppModelConfigs {
         isBundled = false
     )
 
-    /** Lightest inference alternative (downloadable). */
-    val QWEN_1_5B = ModelConfig(
-        id = "qwen2.5-1.5b-instruct-q4km",
-        name = "Qwen 2.5 1.5B Instruct",
-        description = "Lightweight alternative, ~1.1 GB",
-        huggingFaceRepo = "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-        filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        fileSizeMB = 1100,
-        requiredRamGB = 2,
-        contextLength = 4096,
-        engineType = EngineType.LLAMA_CPP
+    /**
+     * Qwen3.5 2B — hybrid Gated Delta Network + MoE architecture (downloadable).
+     * ~1.3 GB (Q4_K_M). Significant quality improvement over older Qwen models.
+     * Supports thinking mode via <think>...</think> tags; 32K native context.
+     */
+    val QWEN3_5_2B = ModelConfig(
+        id = "qwen3.5-2b-q4km",
+        name = "Qwen 3.5 2B",
+        description = "Hybrid MoE, thinking mode, 32K context, ~1.3 GB",
+        huggingFaceRepo = "unsloth/Qwen3.5-2B-GGUF",
+        filename = "Qwen3.5-2B-Q4_K_M.gguf",
+        fileSizeMB = 1280,
+        requiredRamGB = 3,
+        contextLength = 32768,
+        engineType = EngineType.LLAMA_CPP,
+        thinkOpenTag = "<think>",
+        thinkCloseTag = "</think>"
+    )
+
+    /**
+     * Qwen3.5 4B — larger capacity variant of the same hybrid GDN + MoE architecture.
+     * ~2.5 GB (Q4_K_M). Better reasoning and comprehension than the 2B variant.
+     * Supports thinking mode via <think>...</think> tags; 32K native context.
+     */
+    val QWEN3_5_4B = ModelConfig(
+        id = "qwen3.5-4b-q4km",
+        name = "Qwen 3.5 4B",
+        description = "Hybrid MoE, thinking mode, 32K context, ~2.5 GB",
+        huggingFaceRepo = "unsloth/Qwen3.5-4B-GGUF",
+        filename = "Qwen3.5-4B-Q4_K_M.gguf",
+        fileSizeMB = 2500,
+        requiredRamGB = 5,
+        contextLength = 32768,
+        engineType = EngineType.LLAMA_CPP,
+        thinkOpenTag = "<think>",
+        thinkCloseTag = "</think>"
     )
 
     /**
@@ -82,7 +107,7 @@ object AppModelConfigs {
         isBundled = false
     )
 
-    val ALL_INFERENCE = listOf(GEMMA_3N_E2B_LITERT, GEMMA_2B, QWEN_1_5B, LFM2_1_2B_TOOL)
+    val ALL_INFERENCE = listOf(GEMMA_3N_E2B_LITERT, GEMMA_2B, QWEN3_5_2B, QWEN3_5_4B, LFM2_1_2B_TOOL)
     val ALL_EMBEDDING = listOf(EMBEDDING_GEMMA_LITERT)
     val ALL = ALL_INFERENCE + ALL_EMBEDDING
 

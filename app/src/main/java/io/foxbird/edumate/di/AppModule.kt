@@ -6,7 +6,11 @@ import io.foxbird.doclibrary.di.documentLibraryKoinModules
 import io.foxbird.doclibrary.domain.rag.IRagEngine
 import io.foxbird.doclibrary.domain.rag.RagConfig
 import io.foxbird.agentcore.EduMateAgentOrchestrator
+import io.foxbird.agentcore.tools.ExtractConceptsTool
+import io.foxbird.agentcore.tools.IngestMaterialTool
 import io.foxbird.edgeai.agent.IAgentOrchestrator
+import io.foxbird.edgeai.engine.ITextGenerator
+import io.foxbird.edgeai.engine.IVisionEngine
 import io.foxbird.edgeai.embedding.EmbeddingService
 import io.foxbird.edgeai.embedding.IEmbeddingService
 import io.foxbird.edgeai.engine.EngineOrchestrator
@@ -68,6 +72,8 @@ val engineModule = module {
     single { LiteRtEmbeddingEngine() }
     single { MemoryMonitor(androidContext()) }
     single { EngineOrchestrator(get(), get(), get(), get()) }
+    single<IVisionEngine> { get<EngineOrchestrator>() }
+    single<ITextGenerator> { get<EngineOrchestrator>() }
     single { ModelDownloader(androidContext()) }
     single { ModelManager(androidContext(), get(), get(), get(), AppModelConfigs.ALL) }
     // IEmbeddingService implementation — backed by EngineOrchestrator
@@ -95,11 +101,23 @@ val domainModule = module {
         )
     }
     single { WorksheetService(androidContext(), get<IRagEngine>(), get<EngineOrchestrator>()) }
+
+    // Agent-layer shims — thin wrappers around core services; agent is one consumer, not the only one.
+    single { IngestMaterialTool(get<io.foxbird.doclibrary.domain.processor.IDocumentProcessor>()) }
+    single {
+        ExtractConceptsTool(
+            get<io.foxbird.doclibrary.domain.service.ConceptExtractor>(),
+            get<io.foxbird.doclibrary.data.repository.ChunkRepository>()
+        )
+    }
+
     single<IAgentOrchestrator> {
         EduMateAgentOrchestrator(
             orchestrator = get<EngineOrchestrator>(),
             ragEngine = get<IRagEngine>(),
-            memoryMonitor = get<MemoryMonitor>()
+            memoryMonitor = get<MemoryMonitor>(),
+            ingestMaterialTool = get<IngestMaterialTool>(),
+            extractConceptsTool = get<ExtractConceptsTool>()
         )
     }
 }
@@ -117,7 +135,7 @@ val viewModelModule = module {
         )
     }
     viewModel { OnboardingViewModel(get(), get()) }
-    viewModel { ChatViewModel(get(), get<IRagEngine>(), get<IAgentOrchestrator>()) }
+    viewModel { ChatViewModel(get(), get<IRagEngine>(), get<io.foxbird.doclibrary.data.repository.DocumentRepository>(), get<ModelManager>(), get<IAgentOrchestrator>()) }
     viewModel { KnowledgeGraphViewModel(get()) }
     viewModel { WorksheetViewModel(get(), get<io.foxbird.doclibrary.data.repository.DocumentRepository>()) }
     viewModel {

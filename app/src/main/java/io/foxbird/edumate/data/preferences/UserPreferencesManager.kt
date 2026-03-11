@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.foxbird.edumate.ui.theme.ThemeMode
@@ -19,7 +18,8 @@ data class AppPreferences(
     val extractConcepts: Boolean = true,
     val developerMode: Boolean = false,
     val onboardingComplete: Boolean = false,
-    val activeModelId: Long = -1L
+    /** ID of the last active inference model — restored on next launch. Empty = use default. */
+    val activeInferenceModelId: String = ""
 )
 
 class UserPreferencesManager(private val context: Context) {
@@ -29,7 +29,7 @@ class UserPreferencesManager(private val context: Context) {
         val EXTRACT_CONCEPTS = booleanPreferencesKey("extract_concepts")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
-        val ACTIVE_MODEL_ID = longPreferencesKey("active_model_id")
+        val ACTIVE_INFERENCE_MODEL_ID = stringPreferencesKey("active_inference_model_id")
     }
 
     val preferencesFlow: Flow<AppPreferences> = context.dataStore.data.map { prefs ->
@@ -38,7 +38,7 @@ class UserPreferencesManager(private val context: Context) {
             extractConcepts = prefs[Keys.EXTRACT_CONCEPTS] ?: true,
             developerMode = prefs[Keys.DEVELOPER_MODE] ?: false,
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
-            activeModelId = prefs[Keys.ACTIVE_MODEL_ID] ?: -1L
+            activeInferenceModelId = prefs[Keys.ACTIVE_INFERENCE_MODEL_ID] ?: ""
         )
     }
 
@@ -58,7 +58,7 @@ class UserPreferencesManager(private val context: Context) {
         context.dataStore.edit { it[Keys.ONBOARDING_COMPLETE] = complete }
     }
 
-    suspend fun setActiveModelId(id: Long) {
-        context.dataStore.edit { it[Keys.ACTIVE_MODEL_ID] = id }
+    suspend fun setActiveInferenceModelId(id: String) {
+        context.dataStore.edit { it[Keys.ACTIVE_INFERENCE_MODEL_ID] = id }
     }
 }

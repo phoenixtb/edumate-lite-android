@@ -6,7 +6,7 @@ interface IChunkingEngine {
         pageNumber: Int? = null,
         targetTokens: Int,
         maxTokens: Int,
-        overlapChars: Int
+        overlapTokens: Int
     ): List<TextChunk>
 
     fun countTokens(text: String): Int

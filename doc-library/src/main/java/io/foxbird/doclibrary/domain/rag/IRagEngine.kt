@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 data class SearchResult(
     val chunk: ChunkEntity,
-    val score: Float
+    val score: Float,
+    val documentTitle: String? = null
 )
 
 data class RagContext(

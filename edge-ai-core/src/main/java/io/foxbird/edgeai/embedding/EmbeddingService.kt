@@ -1,7 +1,9 @@
 package io.foxbird.edgeai.embedding
 
+import arrow.core.left
 import arrow.core.right
 import io.foxbird.edgeai.engine.EngineOrchestrator
+import io.foxbird.edgeai.util.AppError
 import io.foxbird.edgeai.util.AppResult
 import io.foxbird.edgeai.util.Logger
 
@@ -39,6 +41,15 @@ class EmbeddingService(private val orchestrator: EngineOrchestrator) : IEmbeddin
             )
             onProgress?.invoke(minOf(i + batchSize, texts.size), texts.size)
         }
+
+        // Guard against sequential fallback returning fewer results than inputs (e.g. silent embed() errors)
+        if (results.size < texts.size) {
+            Logger.w(TAG, "embedBatch: expected ${texts.size} results, got ${results.size} — padding with errors")
+            repeat(texts.size - results.size) {
+                results.add(AppError.Llm.GenerationFailed("Embedding not produced (alignment error)").left())
+            }
+        }
+
         return results
     }
 }

@@ -20,4 +20,7 @@ class RoomDocumentRepository(private val dao: DocumentDao) : DocumentRepository 
     override suspend fun getCount(): Int = dao.getCount()
     override suspend fun getCompletedCount(): Int = dao.getCompletedCount()
     override suspend fun getRecent(limit: Int): List<DocumentEntity> = dao.getRecent(limit)
+    override suspend fun findByFileHash(hash: String): DocumentEntity? = dao.findByFileHash(hash)
+    override suspend fun updateEmbeddedChunkCount(id: Long, count: Int) = dao.updateEmbeddedChunkCount(id, count)
+    override suspend fun updateConceptExtractionPending(id: Long, pending: Boolean) = dao.updateConceptExtractionPending(id, pending)
 }

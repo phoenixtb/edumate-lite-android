@@ -1,5 +1,6 @@
 package io.foxbird.edumate.feature.chat
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +32,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -46,17 +48,22 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.ModelTraining
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
@@ -88,12 +95,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.foxbird.edumate.ui.components.IconContainer
+import io.foxbird.doclibrary.domain.rag.SearchResult
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -144,27 +154,26 @@ fun ChatScreen(
         }
     }
 
-    // Also scroll when the keyboard opens so the last message stays visible
-    val density = LocalDensity.current
-    val imeBottom = WindowInsets.ime.getBottom(density)
-    LaunchedEffect(imeBottom) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
     Scaffold(
-        modifier = Modifier.imePadding(), // imePadding on Scaffold — not inside content
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(uiState.title) },
+                title = {
+                    Text(
+                        text = uiState.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
-                    // Agent mode toggle: icon + compact Switch
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(end = 4.dp)
@@ -212,14 +221,35 @@ fun ChatScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            Column(modifier = Modifier.imePadding()) {
+                QuickActionChips(
+                    isAgentMode = uiState.isAgentMode,
+                    onChipClick = { prompt -> inputText = prompt }
+                )
+                InputBar(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    isAgentMode = uiState.isAgentMode,
+                    isGenerating = uiState.isGenerating,
+                    onSend = {
+                        if (inputText.isNotBlank() && !uiState.isGenerating) {
+                            viewModel.sendMessage(inputText)
+                            inputText = ""
+                        }
+                    },
+                    onStop = { viewModel.cancelGeneration() }
+                )
+            }
         }
-    ) { padding ->
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(innerPadding)
         ) {
-            // Agent mode banner — slides in below TopAppBar
+            // Agent mode active banner
             AnimatedVisibility(
                 visible = uiState.isAgentMode,
                 enter = expandVertically(),
@@ -229,6 +259,15 @@ fun ChatScreen(
                     isModelReady = uiState.isModelReady,
                     onOpenModelManager = onOpenModelManager
                 )
+            }
+
+            // Agent mode disabled notification banner
+            AnimatedVisibility(
+                visible = uiState.agentModeOffBanner,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                AgentModeOffBanner()
             }
 
             if (messages.isEmpty() && !uiState.isGenerating) {
@@ -244,35 +283,19 @@ fun ChatScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     items(messages) { message ->
-                        MessageBubble(message)
+                        MessageBubble(
+                            message = message,
+                            onRegenerate = { viewModel.regenerateLastResponse() }
+                        )
                     }
                 }
             }
-
-            QuickActionChips(
-                isAgentMode = uiState.isAgentMode,
-                onChipClick = { prompt -> inputText = prompt }
-            )
-
-            InputBar(
-                value = inputText,
-                onValueChange = { inputText = it },
-                isAgentMode = uiState.isAgentMode,
-                isGenerating = uiState.isGenerating,
-                onSend = {
-                    if (inputText.isNotBlank() && !uiState.isGenerating) {
-                        viewModel.sendMessage(inputText)
-                        inputText = ""
-                    }
-                },
-                onStop = { viewModel.cancelGeneration() }
-            )
         }
     }
 }
 
 // -------------------------------------------------------------------------
-// Agent Mode Banner
+// Agent Mode Banners
 // -------------------------------------------------------------------------
 
 @Composable
@@ -325,6 +348,38 @@ private fun AgentModeBanner(
     }
 }
 
+@Composable
+private fun AgentModeOffBanner(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Warning,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onErrorContainer
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Agent mode disabled",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Text(
+                text = "Switched back to RAG mode — answers sourced from your documents",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
 // -------------------------------------------------------------------------
 // Empty state
 // -------------------------------------------------------------------------
@@ -332,7 +387,7 @@ private fun AgentModeBanner(
 @Composable
 private fun EmptyChatState(isAgentMode: Boolean, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -429,14 +484,19 @@ private fun InputBar(
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
             placeholder = {
-                Text(if (isAgentMode) "Describe your study goal…" else "Ask a question...")
+                Text(
+                    text = if (isAgentMode) "Describe your study goal…" else "Ask a question...",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             },
             leadingIcon = {
                 Icon(
                     imageVector = if (isAgentMode) Icons.Filled.Psychology else Icons.Filled.AutoAwesome,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             },
             maxLines = 4,
@@ -481,18 +541,36 @@ private fun InputBar(
 // -------------------------------------------------------------------------
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, onRegenerate: () -> Unit) {
     val isUser = message.role == "user"
     val dateFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    val onCopy = { clipboardManager.setText(AnnotatedString(message.content)) }
+    val onShare = {
+        val intent = Intent.createChooser(
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, message.content)
+            },
+            null
+        )
+        context.startActivity(intent)
+        Unit
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         if (!isUser) {
+            // Assistant header row: label on left, actions on right
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     if (message.agentSteps.isNotEmpty()) Icons.Filled.Psychology else Icons.Filled.AutoAwesome,
@@ -507,9 +585,64 @@ private fun MessageBubble(message: ChatMessage) {
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
                 )
+                // Confidence warning icon in header
+                val confidence = message.confidenceScore
+                if (confidence != null && confidence < 0.65f) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = "Low confidence",
+                        modifier = Modifier.size(13.dp),
+                        tint = if (confidence < 0.50f)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.tertiary
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                // Action buttons — only after streaming ends
+                if (!message.isStreaming && message.content.isNotEmpty()) {
+                    BubbleActionRow(
+                        onCopy = onCopy,
+                        onShare = onShare,
+                        onRegenerate = onRegenerate
+                    )
+                }
+            }
+        } else {
+            // User bubble: action icons right-aligned above the bubble
+            if (!message.isStreaming) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    BubbleActionRow(
+                        onCopy = onCopy,
+                        onShare = onShare,
+                        onRegenerate = null
+                    )
+                }
             }
         }
 
+        // Confidence banner (assistant, non-agent, before bubble)
+        val confidence = message.confidenceScore
+        if (!isUser && confidence != null && !message.isStreaming) {
+            ConfidenceBanner(score = confidence)
+        }
+
+        // Thinking card — for models with think tags (e.g. Qwen3.5)
+        if (!isUser && message.thinkingContent != null) {
+            ThinkingCard(
+                content = message.thinkingContent,
+                isThinking = message.isThinking,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            )
+        }
+
+        // Agent steps card
         if (message.agentSteps.isNotEmpty()) {
             AgentStepsCard(
                 steps = message.agentSteps,
@@ -525,7 +658,7 @@ private fun MessageBubble(message: ChatMessage) {
             else -> message.content
         }
 
-        // Pulsing dots while waiting for first token (both RAG and agent mode)
+        // Pulsing dots while waiting for first token
         if (message.isStreaming && message.content.isEmpty() && message.agentSteps.isEmpty()) {
             ThinkingDots()
         }
@@ -559,8 +692,14 @@ private fun MessageBubble(message: ChatMessage) {
             }
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
+        // Sources panel (RAG assistant, after streaming)
+        if (!isUser && message.sourceChunks.isNotEmpty() && !message.isStreaming) {
+            SourcesPanel(sources = message.sourceChunks)
+        }
+
+        // Footer: timestamp / tool count / source count
         if (isUser) {
             Text(
                 text = dateFormat.format(Date()),
@@ -573,12 +712,318 @@ private fun MessageBubble(message: ChatMessage) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )
-        } else if (message.sourceChunks.isNotEmpty()) {
-            Text(
-                text = "${message.sourceChunks.size} source(s) used",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// Bubble action row (copy / share / regenerate)
+// -------------------------------------------------------------------------
+
+@Composable
+private fun BubbleActionRow(
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onRegenerate: (() -> Unit)?
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+        IconButton(
+            onClick = onCopy,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                Icons.Filled.ContentCopy,
+                contentDescription = "Copy",
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        IconButton(
+            onClick = onShare,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                Icons.Filled.Share,
+                contentDescription = "Share",
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (onRegenerate != null) {
+            IconButton(
+                onClick = onRegenerate,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Refresh,
+                    contentDescription = "Regenerate",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// Confidence banner
+// -------------------------------------------------------------------------
+
+@Composable
+private fun ConfidenceBanner(score: Float, modifier: Modifier = Modifier) {
+    val isLow = score < 0.50f
+    val isMedium = score in 0.50f..0.64f
+    if (!isLow && !isMedium) return
+
+    val color = if (isLow) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+    val containerColor = if (isLow)
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+    else
+        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+    val message = if (isLow)
+        "Low confidence — answer may not be fully accurate"
+    else
+        "Moderate confidence — verify with your materials"
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(containerColor)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            Icons.Filled.Warning,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = color
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelSmall,
+            color = color
+        )
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+}
+
+// -------------------------------------------------------------------------
+// Sources panel
+// -------------------------------------------------------------------------
+
+@Composable
+private fun SourcesPanel(sources: List<SearchResult>, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Collapsed pill
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                Icons.Filled.MenuBook,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = "${sources.size} source${if (sources.size > 1) "s" else ""}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Icon(
+                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                sources.forEach { result ->
+                    SourceCard(result)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceCard(result: SearchResult, modifier: Modifier = Modifier) {
+    val chunk = result.chunk
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        ),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            // Header: document title + badges
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    Icons.Filled.Description,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = result.documentTitle ?: "Document #${chunk.documentId}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            // Badges row: chunk type + page number
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SourceBadge(text = chunk.chunkType)
+                if (chunk.pageNumber != null) {
+                    SourceBadge(text = "p. ${chunk.pageNumber}")
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            // Content preview
+            Text(
+                text = chunk.content.take(150).let { if (chunk.content.length > 150) "$it…" else it },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                lineHeight = MaterialTheme.typography.labelSmall.lineHeight
+            )
+        }
+    }
+}
+
+@Composable
+private fun SourceBadge(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+}
+
+// -------------------------------------------------------------------------
+// Thinking card (chain-of-thought from models with think tags)
+// -------------------------------------------------------------------------
+
+@Composable
+private fun ThinkingCard(
+    content: String,
+    isThinking: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Expand while the model is actively thinking; collapse once done.
+    var expanded by remember { mutableStateOf(isThinking) }
+
+    LaunchedEffect(isThinking) {
+        if (isThinking) expanded = true
+        else expanded = false          // auto-collapse when thinking finishes
+    }
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            // Header row — always visible
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isThinking) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(10.dp),
+                        strokeWidth = 1.5.dp,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.BlurOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = if (isThinking) "Thinking…" else "Reasoning",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (isThinking) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isThinking) MaterialTheme.colorScheme.tertiary
+                    else MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+
+            // Expandable content — scrollable, max 200dp
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = content,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            }
         }
     }
 }

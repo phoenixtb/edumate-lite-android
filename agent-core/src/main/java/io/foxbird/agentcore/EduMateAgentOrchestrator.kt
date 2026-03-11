@@ -7,6 +7,8 @@ import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.message.Message
+import io.foxbird.agentcore.tools.ExtractConceptsTool
+import io.foxbird.agentcore.tools.IngestMaterialTool
 import io.foxbird.agentcore.tools.MaterialSummaryTool
 import io.foxbird.agentcore.tools.RagSearchTool
 import io.foxbird.agentcore.tools.WorksheetTool
@@ -37,7 +39,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 class EduMateAgentOrchestrator(
     private val orchestrator: EngineOrchestrator,
     private val ragEngine: IRagEngine,
-    private val memoryMonitor: MemoryMonitor
+    private val memoryMonitor: MemoryMonitor,
+    private val ingestMaterialTool: IngestMaterialTool,
+    private val extractConceptsTool: ExtractConceptsTool
 ) : IAgentOrchestrator {
 
     companion object {
@@ -71,6 +75,8 @@ class EduMateAgentOrchestrator(
         tool(RagSearchTool(ragEngine))
         tool(WorksheetTool(ragEngine, orchestrator))
         tool(MaterialSummaryTool(ragEngine, orchestrator))
+        tool(ingestMaterialTool)
+        tool(extractConceptsTool)
     }
 
     override fun isReady(): Boolean = orchestrator.isInferenceReady()

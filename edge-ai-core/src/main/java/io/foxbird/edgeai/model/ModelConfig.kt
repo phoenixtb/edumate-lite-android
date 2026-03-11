@@ -18,7 +18,11 @@ data class ModelConfig(
     val isBundled: Boolean = false,
     val fallbackModelId: String? = null,
     /** Tokenizer/vocab file that must be co-located with the model (e.g. sentencepiece.model for EmbeddingGemma). */
-    val tokenizerFilename: String? = null
+    val tokenizerFilename: String? = null,
+    /** Opening tag for model's internal reasoning block (e.g. "<think>" for Qwen3/3.5). Null = no thinking mode. */
+    val thinkOpenTag: String? = null,
+    /** Closing tag for model's internal reasoning block (e.g. "</think>" for Qwen3/3.5). */
+    val thinkCloseTag: String? = null
 ) {
     val downloadUrl: String
         get() = "https://huggingface.co/$huggingFaceRepo/resolve/main/$filename"

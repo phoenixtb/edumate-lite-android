@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -54,8 +55,34 @@ class SettingsViewModel(
 
     init {
         refreshCounts()
-        // Ensure model states are up to date (file availability checks)
-        viewModelScope.launch { modelManager.initialize() }
+        viewModelScope.launch {
+            modelManager.initialize()
+            restorePreferredModel()
+        }
+    }
+
+    /**
+     * After initialization, auto-load the model the user last used.
+     * Falls back to the bundled default (Gemma 3n E2B) if the preferred model
+     * is not downloaded or not registered.
+     */
+    private suspend fun restorePreferredModel() {
+        val preferredId = prefsManager.preferencesFlow.first().activeInferenceModelId
+
+        val target = if (preferredId.isNotEmpty()) {
+            modelManager.getInferenceModels().find { it.config.id == preferredId }
+        } else null
+
+        val modelToLoad = when {
+            target != null && modelManager.isModelAvailable(target.config) -> target.config
+            else -> modelManager.getInferenceModels()
+                .firstOrNull { it.config.isBundled && modelManager.isModelAvailable(it.config) }
+                ?.config
+        } ?: return
+
+        // Only load if not already loaded
+        if (modelManager.activeInferenceModelId.value == modelToLoad.id) return
+        loadModel(modelToLoad)
     }
 
     private fun refreshCounts() {
@@ -71,7 +98,9 @@ class SettingsViewModel(
             _lastLoadError.value = null
             try {
                 val success = modelManager.loadModel(config)
-                if (!success) {
+                if (success) {
+                    prefsManager.setActiveInferenceModelId(config.id)
+                } else {
                     val state = modelManager.modelStates.value[config.id]
                     _lastLoadError.value = (state as? ModelState.LoadFailed)?.error
                         ?: "Failed to load model"
@@ -89,20 +118,22 @@ class SettingsViewModel(
     fun downloadModel(config: ModelConfig) {
         viewModelScope.launch {
             _isLoadingModel.value = config.id
+            _lastLoadError.value = null
             try {
                 modelManager.downloadModel(config).collect { event ->
                     when (event) {
-                        is DownloadEvent.Progress -> { /* state updated by ModelManager */ }
-                        is DownloadEvent.Complete -> { _isLoadingModel.value = null }
+                        is DownloadEvent.Progress -> Unit  // state updated by ModelManager
+                        is DownloadEvent.Complete -> _isLoadingModel.value = null
                         is DownloadEvent.Error -> {
                             _isLoadingModel.value = null
                             _lastLoadError.value = event.message
                         }
-                        is DownloadEvent.Retrying -> { /* keep loading indicator */ }
+                        is DownloadEvent.Retrying -> Unit  // keep loading indicator
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _isLoadingModel.value = null
+                _lastLoadError.value = e.message ?: "Download failed unexpectedly"
             }
         }
     }

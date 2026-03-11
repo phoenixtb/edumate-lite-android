@@ -31,5 +31,8 @@ interface EmbeddingEngine {
 
     fun getEmbeddingDimension(): Int
 
+    /** Returns the max token context this embedding model was loaded with; 0 if unknown. */
+    fun getContextSize(): Int = 0
+
     fun destroy()
 }

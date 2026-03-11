@@ -51,36 +51,61 @@ class LlamaCppEngine : GenerationEngine, EmbeddingEngine {
             lastLoadError = null
             try {
                 val file = File(modelPath)
-                if (!file.exists() || !file.canRead()) {
-                    lastLoadError = "Model file not found or unreadable: $modelPath"
+                val fileSizeMb = file.length() / (1024L * 1024L)
+                val rt = Runtime.getRuntime()
+                val freeHeapMb = rt.freeMemory() / (1024L * 1024L)
+                val maxHeapMb  = rt.maxMemory()  / (1024L * 1024L)
+                Logger.i(TAG, "Load attempt: path=$modelPath size=${fileSizeMb}MB " +
+                    "heapFree=${freeHeapMb}MB heapMax=${maxHeapMb}MB")
+
+                if (!file.exists()) {
+                    lastLoadError = "Model file not found: $modelPath"
+                    Logger.e(TAG, lastLoadError!!)
                     return@withContext false
                 }
+                if (!file.canRead()) {
+                    lastLoadError = "Model file not readable: $modelPath"
+                    Logger.e(TAG, lastLoadError!!)
+                    return@withContext false
+                }
+                if (file.length() < 10 * 1024 * 1024) {
+                    lastLoadError = "Model file too small (${fileSizeMb}MB) — likely incomplete download"
+                    Logger.e(TAG, lastLoadError!!)
+                    return@withContext false
+                }
+
+                // Validate GGUF magic bytes ('G','G','U','F' = 0x47,0x47,0x55,0x46)
+                val magic = ByteArray(4)
+                file.inputStream().use { it.read(magic) }
+                val isGguf = magic[0] == 0x47.toByte() && magic[1] == 0x47.toByte() &&
+                             magic[2] == 0x55.toByte() && magic[3] == 0x46.toByte()
+                if (!isGguf) {
+                    lastLoadError = "File is not a valid GGUF (bad magic bytes: " +
+                        magic.joinToString(" ") { "0x%02X".format(it) } + ") — corrupted download?"
+                    Logger.e(TAG, lastLoadError!!)
+                    return@withContext false
+                }
+                Logger.i(TAG, "GGUF magic OK, calling LlamaBridge.initGenerateModel")
 
                 this@LlamaCppEngine.contextSize = contextSize
 
                 val genOk = LlamaBridge.initGenerateModel(modelPath)
                 if (!genOk) {
-                    val embOk = LlamaBridge.initModel(modelPath)
-                    if (!embOk) {
-                        lastLoadError = "Llamatik failed to load model: $modelPath"
-                        return@withContext false
-                    }
-                    embeddingModelLoaded = true
-                } else {
-                    generationModelLoaded = true
-                    try {
-                        LlamaBridge.initModel(modelPath)
-                        embeddingModelLoaded = true
-                    } catch (_: Exception) {
-                        // Embedding init optional for generation-only models
-                    }
+                    // LlamaBridge returns no error string. The actual llama.cpp error is in
+                    // logcat under tags: "llama", "ggml", "LlamaBridge". Filter those tags
+                    // for the real native reason (architecture unsupported, OOM, etc.).
+                    lastLoadError = "llama.cpp rejected the model (initGenerateModel=false). " +
+                        "Check logcat tags 'llama'/'ggml' for the native error."
+                    Logger.e(TAG, lastLoadError!!)
+                    return@withContext false
                 }
 
-                Logger.i(TAG, "Llamatik model loaded: $modelPath")
+                generationModelLoaded = true
+                Logger.i(TAG, "Model loaded successfully: $modelPath")
                 true
             } catch (e: Exception) {
                 lastLoadError = e.message ?: e.toString()
-                Logger.e(TAG, "Load failed", e)
+                Logger.e(TAG, "Load failed with exception", e)
                 false
             }
         }

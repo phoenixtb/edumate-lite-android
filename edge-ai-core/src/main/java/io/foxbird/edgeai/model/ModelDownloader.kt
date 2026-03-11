@@ -14,11 +14,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import java.io.File
-import kotlinx.coroutines.currentCoroutineContext
 
 sealed class DownloadEvent {
     data class Progress(val bytesDownloaded: Long, val totalBytes: Long) : DownloadEvent() {
@@ -35,7 +34,7 @@ class ModelDownloader(private val context: Context) {
     companion object {
         private const val TAG = "ModelDownloader"
         private const val MODELS_DIR = "models"
-        private const val BUFFER_SIZE = 8 * 1024
+        private const val BUFFER_SIZE = 32 * 1024   // 32 KB — larger buffer for large model files
         private const val MAX_RETRY_ATTEMPTS = 3
         private const val RETRY_DELAY_MS = 2000L
     }
@@ -43,7 +42,10 @@ class ModelDownloader(private val context: Context) {
     private val client = HttpClient(Android) {
         install(HttpTimeout) {
             connectTimeoutMillis = 30_000L
-            socketTimeoutMillis = 60_000L
+            // Socket timeout must be long enough to not fire between chunks of a large download.
+            // HuggingFace CDN can pause between chunks; 5 minutes is safe for LLM downloads.
+            socketTimeoutMillis = 300_000L
+            requestTimeoutMillis = Long.MAX_VALUE
         }
     }
 
@@ -62,53 +64,59 @@ class ModelDownloader(private val context: Context) {
         return file.exists() && file.length() > 10 * 1024 * 1024
     }
 
-    fun downloadModel(config: ModelConfig): Flow<DownloadEvent> = flow {
+    fun downloadModel(config: ModelConfig): Flow<DownloadEvent> = channelFlow {
         val targetFile = getModelPath(config)
         val tempFile = File(targetFile.parent, "${config.filename}.tmp")
 
-        Logger.i(TAG, "Starting download: ${config.name} from ${config.downloadUrl}")
+        Logger.i(TAG, "Download URL: ${config.downloadUrl}")
 
         var lastError: Exception? = null
 
         for (attempt in 1..MAX_RETRY_ATTEMPTS) {
             try {
-                val success = attemptDownload(config, targetFile, tempFile) { event ->
-                    when (event) {
-                        is DownloadEvent.Progress -> emit(event)
-                        is DownloadEvent.Complete -> emit(event)
-                        else -> {}
-                    }
-                }
-                if (success) return@flow
+                val success = attemptDownload(config, targetFile, tempFile) { event -> send(event) }
+                if (success) return@channelFlow
+                // success == false means coroutine was cancelled — stop silently
+                tempFile.delete()
+                return@channelFlow
             } catch (e: java.net.UnknownHostException) {
-                emit(DownloadEvent.Error("No internet connection", isRetryable = true))
-                return@flow
+                Logger.e(TAG, "No internet connection", e)
+                tempFile.delete()
+                send(DownloadEvent.Error("No internet connection. Check your network and try again.", isRetryable = true))
+                return@channelFlow
             } catch (e: java.net.SocketTimeoutException) {
                 lastError = e
+                Logger.w(TAG, "Socket timeout on attempt $attempt: ${e.message}")
                 if (attempt < MAX_RETRY_ATTEMPTS) {
-                    emit(DownloadEvent.Retrying(attempt + 1, MAX_RETRY_ATTEMPTS, "Connection timeout"))
+                    send(DownloadEvent.Retrying(attempt + 1, MAX_RETRY_ATTEMPTS, "Connection timeout"))
                     delay(RETRY_DELAY_MS * attempt)
                 }
             } catch (e: java.io.IOException) {
                 lastError = e
+                Logger.w(TAG, "IO error on attempt $attempt: ${e.message}")
                 if (attempt < MAX_RETRY_ATTEMPTS) {
-                    emit(DownloadEvent.Retrying(attempt + 1, MAX_RETRY_ATTEMPTS, "Network error"))
+                    send(DownloadEvent.Retrying(attempt + 1, MAX_RETRY_ATTEMPTS, "Network error: ${e.message}"))
                     delay(RETRY_DELAY_MS * attempt)
                 }
             } catch (e: Exception) {
+                Logger.e(TAG, "Download error on attempt $attempt: ${e.message}", e)
                 tempFile.delete()
-                emit(DownloadEvent.Error(e.message ?: "Unknown error", isRetryable = false))
-                return@flow
+                send(DownloadEvent.Error(e.message ?: "Unknown download error", isRetryable = false))
+                return@channelFlow
             }
         }
 
         tempFile.delete()
-        emit(DownloadEvent.Error(
-            "Download failed after $MAX_RETRY_ATTEMPTS attempts: ${lastError?.message}",
+        send(DownloadEvent.Error(
+            "Download failed after $MAX_RETRY_ATTEMPTS attempts: ${lastError?.message ?: "Unknown error"}",
             isRetryable = true
         ))
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Returns true on success, false if the coroutine was cancelled mid-download.
+     * Throws on HTTP/IO errors so the caller can retry or report.
+     */
     private suspend fun attemptDownload(
         config: ModelConfig,
         targetFile: File,
@@ -116,9 +124,9 @@ class ModelDownloader(private val context: Context) {
         onEvent: suspend (DownloadEvent) -> Unit
     ): Boolean {
         val ctx = currentCoroutineContext()
-        client.prepareGet(config.downloadUrl).execute { response ->
+        return client.prepareGet(config.downloadUrl).execute { response ->
             if (!response.status.isSuccess()) {
-                throw Exception("HTTP ${response.status.value}")
+                throw Exception("HTTP ${response.status.value}: ${response.status.description} — URL: ${config.downloadUrl}")
             }
 
             val totalBytes = response.contentLength() ?: (config.fileSizeMB * 1024L * 1024L)
@@ -144,12 +152,12 @@ class ModelDownloader(private val context: Context) {
             if (targetFile.exists()) targetFile.delete()
             if (tempFile.renameTo(targetFile)) {
                 onEvent(DownloadEvent.Complete(targetFile.absolutePath))
-                return@execute true
+                true
             } else {
-                throw Exception("Failed to save model file")
+                tempFile.delete()
+                throw Exception("Failed to save model file to ${targetFile.absolutePath}")
             }
         }
-        return true
     }
 
     suspend fun deleteModel(config: ModelConfig): Boolean {

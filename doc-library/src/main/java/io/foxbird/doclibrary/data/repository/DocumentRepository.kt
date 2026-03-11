@@ -17,4 +17,7 @@ interface DocumentRepository {
     suspend fun getCount(): Int
     suspend fun getCompletedCount(): Int
     suspend fun getRecent(limit: Int): List<DocumentEntity>
+    suspend fun findByFileHash(hash: String): DocumentEntity?
+    suspend fun updateEmbeddedChunkCount(id: Long, count: Int)
+    suspend fun updateConceptExtractionPending(id: Long, pending: Boolean)
 }

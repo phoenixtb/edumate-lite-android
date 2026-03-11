@@ -32,6 +32,7 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
 
     private var gemmaEmbedder: GemmaEmbeddingModel? = null
     private var embeddingDim: Int = 0
+    private var loadedContextSize: Int = 0
     private var loaded = false
 
     override suspend fun loadModel(
@@ -61,8 +62,9 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
 
             gemmaEmbedder = null
             gemmaEmbedder = GemmaEmbeddingModel(modelPath, tokenizerPath, /* useGpu= */ false)
+            loadedContextSize = contextSize
             loaded = true
-            Logger.i(TAG, "GemmaEmbeddingModel loaded: $modelPath")
+            Logger.i(TAG, "GemmaEmbeddingModel loaded: $modelPath (contextSize=$contextSize)")
             true
         } catch (e: Exception) {
             lastLoadError = e.message ?: e.toString()
@@ -75,6 +77,7 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
         gemmaEmbedder = null
         loaded = false
         embeddingDim = 0
+        loadedContextSize = 0
         lastLoadError = null
     }
 
@@ -154,6 +157,8 @@ class LiteRtEmbeddingEngine : EmbeddingEngine {
     }
 
     override fun getEmbeddingDimension(): Int = embeddingDim
+
+    override fun getContextSize(): Int = loadedContextSize
 
     override fun destroy() {
         unloadModel()

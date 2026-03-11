@@ -8,11 +8,16 @@ import io.foxbird.edgeai.engine.GenerationParams
 import io.foxbird.edgeai.util.Logger
 import kotlinx.coroutines.flow.Flow
 
+private const val RRF_K = 60
+
 /**
- * Hybrid retrieval-augmented generation: vector similarity + BM25 keyword scoring.
+ * Hybrid retrieval-augmented generation using Reciprocal Rank Fusion (RRF).
  *
- * The [config] is provided by the host app, allowing each app to inject its own
- * system prompt / persona without changing this implementation.
+ * Unlike simple re-ranking, both vector search and BM25 run independently over the full
+ * candidate set. Their ranked lists are then merged with RRF so that a chunk ranking
+ * highly in either modality can surface — not only those that passed a vector threshold.
+ *
+ * RRF score = Σ 1/(k + rank_i)  where k=60 (standard constant).
  */
 class RagEngine(
     private val vectorSearch: VectorSearchEngine,
@@ -25,6 +30,8 @@ class RagEngine(
 
     companion object {
         private const val TAG = "RagEngine"
+        /** Tokens reserved for system prompt + query + generation headroom. */
+        private const val CONTEXT_OVERHEAD_TOKENS = 512
     }
 
     override suspend fun retrieve(
@@ -42,31 +49,55 @@ class RagEngine(
             ifRight = { it }
         )
 
-        val vectorResults = vectorSearch.search(
-            queryEmbedding = queryEmbedding,
-            documentIds = documentIds,
-            topK = topK * 2,
-            threshold = threshold
-        )
+        // Load all candidates once — shared between vector and BM25
+        val candidates = vectorSearch.loadCandidates(documentIds)
+        if (candidates.isEmpty()) return RagContext(emptyList(), "")
 
-        if (vectorResults.isEmpty()) return RagContext(emptyList(), "")
+        // --- Vector ranking ---
+        val vectorRanked = vectorSearch.rankBySimilarity(queryEmbedding, candidates, threshold)
 
-        val documents = vectorResults.map { it.chunk.content }
-        val bm25Scores = bm25Scorer.score(query, documents)
+        // --- BM25 ranking over full candidate set ---
+        val candidateContents = candidates.map { it.content }
+        val bm25Scores = bm25Scorer.score(query, candidateContents)
+        val bm25Ranked = candidates
+            .mapIndexed { idx, chunk -> Pair(chunk, bm25Scores.getOrElse(idx) { 0f }) }
+            .sortedByDescending { it.second }
 
-        val hybridResults = vectorResults.mapIndexed { index, result ->
-            val hybridScore = config.vectorWeight * result.score +
-                    config.bm25Weight * (bm25Scores.getOrElse(index) { 0f })
-            result.copy(score = hybridScore)
-        }.sortedByDescending { it.score }.take(topK)
+        // --- Reciprocal Rank Fusion ---
+        val chunkIdToRrfScore = mutableMapOf<Long, Float>()
+
+        vectorRanked.forEachIndexed { rank, result ->
+            val id = result.chunk.id
+            chunkIdToRrfScore[id] = (chunkIdToRrfScore[id] ?: 0f) + 1f / (RRF_K + rank + 1)
+        }
+        bm25Ranked.forEachIndexed { rank, (chunk, _) ->
+            val id = chunk.id
+            chunkIdToRrfScore[id] = (chunkIdToRrfScore[id] ?: 0f) + 1f / (RRF_K + rank + 1)
+        }
+
+        val chunkById = candidates.associateBy { it.id }
+        val rrfResults = chunkIdToRrfScore.entries
+            .sortedByDescending { it.value }
+            .take(topK)
+            .mapNotNull { (id, score) -> chunkById[id]?.let { SearchResult(it, score) } }
+
+        if (rrfResults.isEmpty()) return RagContext(emptyList(), "")
+
+        // --- Token budget gating (dynamic: use model context size when available) ---
+        val modelContextSize = orchestrator.getContextSize()
+        val effectiveMaxContext = if (modelContextSize > 0) {
+            (modelContextSize - CONTEXT_OVERHEAD_TOKENS).coerceAtLeast(config.maxContextTokens)
+        } else {
+            config.maxContextTokens
+        }
 
         val contextBuilder = StringBuilder()
         val selectedChunks = mutableListOf<SearchResult>()
         var totalTokens = 0
 
-        for (result in hybridResults) {
+        for (result in rrfResults) {
             val chunkTokens = chunkingEngine.countTokens(result.chunk.content)
-            if (totalTokens + chunkTokens > config.maxContextTokens) break
+            if (totalTokens + chunkTokens > effectiveMaxContext) break
             contextBuilder.append("[Source ${selectedChunks.size + 1}]\n")
             contextBuilder.append(result.chunk.content)
             contextBuilder.append("\n\n")
@@ -87,18 +118,14 @@ class RagEngine(
         val prompt = buildPrompt(context.contextText, query, conversationHistory)
         return orchestrator.generate(
             prompt = prompt,
-            params = GenerationParams(
-                maxTokens = maxTokens,
-                temperature = temperature,
-                topK = 20
-            )
+            params = GenerationParams(maxTokens = maxTokens, temperature = temperature, topK = 20)
         )
     }
 
     private fun buildPrompt(contextText: String, query: String, history: String): String =
         buildString {
             append("System: ${config.systemPrompt}\n\n")
-            append("Study Material:\n$contextText\n")
+            if (contextText.isNotBlank()) append("Study Material:\n$contextText\n")
             if (history.isNotBlank()) append("\nConversation so far:\n$history\n")
             append("\nUser: $query\n\nAssistant:")
         }

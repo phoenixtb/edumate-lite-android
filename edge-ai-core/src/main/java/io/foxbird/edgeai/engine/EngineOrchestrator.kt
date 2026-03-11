@@ -1,5 +1,6 @@
 package io.foxbird.edgeai.engine
 
+import android.graphics.Bitmap
 import arrow.core.left
 import io.foxbird.edgeai.model.ModelConfig
 import io.foxbird.edgeai.model.ModelPurpose
@@ -28,7 +29,7 @@ class EngineOrchestrator(
     private val liteRtGenEngine: LiteRtGenerationEngine,
     private val liteRtEmbEngine: LiteRtEmbeddingEngine,
     private val memoryMonitor: MemoryMonitor
-) {
+) : IVisionEngine, ITextGenerator {
     companion object {
         private const val TAG = "EngineOrchestrator"
     }
@@ -172,14 +173,17 @@ class EngineOrchestrator(
         return engine.generate(prompt, params)
     }
 
-    suspend fun generateComplete(
+    override suspend fun generateComplete(
         prompt: String,
-        params: GenerationParams = GenerationParams()
+        params: GenerationParams
     ): AppResult<String> {
         val engine = _activeInferenceEngine.value?.let { generationEngines[it] }
             ?: return AppError.Llm.GenerationFailed("No inference model loaded").left()
         return engine.generateComplete(prompt, params)
     }
+
+    override fun findActiveModelConfig(): ModelConfig? =
+        _activeInferenceModelId.value?.let { findModelById(it) }
 
     suspend fun embed(text: String): AppResult<FloatArray> {
         val engine = _activeEmbeddingEngine.value?.let { embeddingEngines[it] }
@@ -203,6 +207,23 @@ class EngineOrchestrator(
 
     fun getContextSize(): Int =
         _activeInferenceEngine.value?.let { generationEngines[it]?.getContextSize() } ?: 0
+
+    /** Returns the context size the active embedding model was loaded with; 0 if none loaded. */
+    fun getEmbeddingContextSize(): Int =
+        _activeEmbeddingEngine.value?.let { embeddingEngines[it]?.getContextSize() } ?: 0
+
+    override fun supportsVision(): Boolean =
+        _activeInferenceEngine.value?.let { generationEngines[it]?.supportsVision() } == true
+
+    override suspend fun generateWithImage(
+        prompt: String,
+        bitmap: Bitmap,
+        params: GenerationParams
+    ): AppResult<String> {
+        val engine = _activeInferenceEngine.value?.let { generationEngines[it] }
+            ?: return AppError.Llm.GenerationFailed("No inference model loaded").left()
+        return engine.generateWithImage(prompt, bitmap, params)
+    }
 
     fun cancelGeneration() {
         _activeInferenceEngine.value?.let { generationEngines[it]?.cancelGeneration() }

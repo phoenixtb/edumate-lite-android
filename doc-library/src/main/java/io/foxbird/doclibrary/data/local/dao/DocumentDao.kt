@@ -58,4 +58,13 @@ interface DocumentDao {
 
     @Query("SELECT * FROM documents WHERE status = 'completed' ORDER BY created_at DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<DocumentEntity>
+
+    @Query("SELECT * FROM documents WHERE file_hash = :hash LIMIT 1")
+    suspend fun findByFileHash(hash: String): DocumentEntity?
+
+    @Query("UPDATE documents SET embedded_chunk_count = :count WHERE id = :id")
+    suspend fun updateEmbeddedChunkCount(id: Long, count: Int)
+
+    @Query("UPDATE documents SET concept_extraction_pending = :pending WHERE id = :id")
+    suspend fun updateConceptExtractionPending(id: Long, pending: Boolean)
 }

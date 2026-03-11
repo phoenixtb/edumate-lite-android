@@ -9,6 +9,9 @@ import io.foxbird.doclibrary.domain.processor.IDocumentProcessor
 import io.foxbird.doclibrary.domain.processor.ProcessingEvent
 import io.foxbird.doclibrary.domain.processor.ProcessingMode
 import io.foxbird.doclibrary.domain.processor.ProcessingState
+import io.foxbird.doclibrary.domain.task.AiTask
+import io.foxbird.doclibrary.domain.task.TaskQueue
+import io.foxbird.doclibrary.domain.task.TaskType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +65,7 @@ data class LibraryUiState(
 class LibraryViewModel(
     private val documentRepository: DocumentRepository,
     private val documentProcessor: IDocumentProcessor,
+    private val taskQueue: TaskQueue,
     private val appScope: CoroutineScope
 ) : ViewModel() {
 
@@ -75,8 +79,10 @@ class LibraryViewModel(
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
-    /** Live processing state — same source as HomeViewModel, no duplication. */
     val processingState: StateFlow<ProcessingState?> = documentProcessor.processingState
+
+    /** Exposes task queue state for progress indicators. */
+    val tasks = taskQueue.tasks
 
     private val _showAddSheet = MutableStateFlow(false)
     val showAddSheet: StateFlow<Boolean> = _showAddSheet.asStateFlow()
@@ -90,7 +96,6 @@ class LibraryViewModel(
 
     // ---------- Add flow steps ----------
 
-    /** Called when user picks a source (PDF/Gallery/Camera) from the sheet. */
     fun onSourcePicked(
         type: SourceType,
         uri: Uri? = null,
@@ -107,7 +112,6 @@ class LibraryViewModel(
         )
     }
 
-    /** Called when user confirms title/subject/grade in the Details dialog. */
     fun confirmDetails(title: String, subject: String?, gradeLevel: Int?) {
         val current = _uiState.value.addFlow as? AddFlow.SourcePicked ?: return
         _uiState.value = _uiState.value.copy(
@@ -115,58 +119,70 @@ class LibraryViewModel(
         )
     }
 
-    /** Called when user picks a processing mode. Kicks off actual processing. */
+    /** Enqueues processing through [TaskQueue] so requests are serialized. */
     fun confirmProcessing(mode: ProcessingMode) {
         val current = _uiState.value.addFlow as? AddFlow.Details ?: return
         _uiState.value = _uiState.value.copy(addFlow = AddFlow.Idle, error = null)
 
-        appScope.launch {
-            val flow = when (current.type) {
-                SourceType.PDF -> documentProcessor.processPdf(
-                    uri = current.uri!!,
-                    title = current.title,
-                    subject = current.subject,
-                    gradeLevel = current.gradeLevel,
-                    mode = mode
-                )
-                SourceType.GALLERY, SourceType.CAMERA -> documentProcessor.processImages(
-                    uris = if (current.uri != null) listOf(current.uri) else current.uris,
-                    title = current.title,
-                    subject = current.subject,
-                    gradeLevel = current.gradeLevel,
-                    mode = mode
-                )
+        val taskId = "doc_${System.currentTimeMillis()}"
+        val taskTitle = "Processing: ${current.title}"
+
+        taskQueue.enqueue(
+            AiTask(
+                id = taskId,
+                type = TaskType.DOCUMENT_PROCESSING,
+                title = taskTitle
+            ) { _ ->
+                val flow = when (current.type) {
+                    SourceType.PDF -> documentProcessor.processPdf(
+                        uri = current.uri!!,
+                        title = current.title,
+                        subject = current.subject,
+                        gradeLevel = current.gradeLevel,
+                        mode = mode
+                    )
+                    SourceType.GALLERY, SourceType.CAMERA -> documentProcessor.processImages(
+                        uris = if (current.uri != null) listOf(current.uri) else current.uris,
+                        title = current.title,
+                        subject = current.subject,
+                        gradeLevel = current.gradeLevel,
+                        mode = mode
+                    )
+                }
+                flow.collect { event -> handleProcessingEvent(event) }
             }
-            flow.collect { event -> handleProcessingEvent(event) }
-        }
+        )
     }
 
-    /** Cancel mid-flow (e.g. user hits Cancel in Details or Mode dialog). */
     fun cancelAddFlow() {
         _uiState.value = _uiState.value.copy(addFlow = AddFlow.Idle)
     }
 
-    // ---------- Direct add (legacy / text path) ----------
+    // ---------- Direct add (text path) ----------
 
     fun addText(text: String, title: String, subject: String? = null) {
         _uiState.value = _uiState.value.copy(error = null)
-        appScope.launch {
-            documentProcessor.processText(text, title, subject).collect { event ->
-                handleProcessingEvent(event)
+        taskQueue.enqueue(
+            AiTask(
+                id = "text_${System.currentTimeMillis()}",
+                type = TaskType.DOCUMENT_PROCESSING,
+                title = "Processing: $title"
+            ) { _ ->
+                documentProcessor.processText(text, title, subject).collect { event ->
+                    handleProcessingEvent(event)
+                }
             }
-        }
+        )
     }
 
     // ---------- Edit & Delete ----------
 
     fun deleteDocument(documentId: Long) {
-        viewModelScope.launch { documentRepository.deleteById(documentId) }
+        appScope.launch { documentRepository.deleteById(documentId) }
     }
 
     fun updateDocument(id: Long, title: String, subject: String?, gradeLevel: Int?) {
-        viewModelScope.launch {
-            documentRepository.updateMetadata(id, title, subject, gradeLevel)
-        }
+        appScope.launch { documentRepository.updateMetadata(id, title, subject, gradeLevel) }
     }
 
     fun clearError() { _uiState.value = _uiState.value.copy(error = null) }
@@ -178,6 +194,9 @@ class LibraryViewModel(
             is ProcessingEvent.Progress -> Unit
             is ProcessingEvent.Complete -> refresh()
             is ProcessingEvent.Error -> _uiState.value = _uiState.value.copy(error = event.message)
+            is ProcessingEvent.Duplicate -> _uiState.value = _uiState.value.copy(
+                error = "\"${event.existingTitle}\" is already in your library."
+            )
         }
     }
 }

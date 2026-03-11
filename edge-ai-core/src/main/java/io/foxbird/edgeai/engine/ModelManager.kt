@@ -12,6 +12,7 @@ import io.foxbird.edgeai.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -127,9 +128,24 @@ class ModelManager(
     fun getInferenceModels(): List<ModelInfo> = getModels().filter { it.config.purpose == ModelPurpose.INFERENCE }
     fun getEmbeddingModels(): List<ModelInfo> = getModels().filter { it.config.purpose == ModelPurpose.EMBEDDING }
 
+    fun getActiveInferenceConfig(): ModelConfig? {
+        val id = activeInferenceModelId.value ?: return null
+        return allModels.find { it.id == id }
+    }
+
     fun downloadModel(config: ModelConfig): Flow<DownloadEvent> {
         orchestrator.updateModelState(config.id, ModelState.Downloading(0f))
-        return downloader.downloadModel(config)
+        return downloader.downloadModel(config).onEach { event ->
+            when (event) {
+                is DownloadEvent.Progress ->
+                    orchestrator.updateModelState(config.id, ModelState.Downloading(event.progressPercent))
+                is DownloadEvent.Complete ->
+                    orchestrator.updateModelState(config.id, ModelState.Downloaded)
+                is DownloadEvent.Error ->
+                    orchestrator.updateModelState(config.id, ModelState.DownloadFailed(event.message))
+                is DownloadEvent.Retrying -> Unit
+            }
+        }
     }
 
     suspend fun loadModel(config: ModelConfig): Boolean {

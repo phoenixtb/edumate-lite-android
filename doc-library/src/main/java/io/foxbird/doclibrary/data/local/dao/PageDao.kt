@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import io.foxbird.doclibrary.data.local.entity.PageEntity
 
 @Dao
@@ -13,6 +14,9 @@ interface PageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(pages: List<PageEntity>): List<Long>
+
+    @Update
+    suspend fun update(page: PageEntity)
 
     @Query("SELECT * FROM pages WHERE document_id = :documentId ORDER BY page_number ASC")
     suspend fun getByDocumentId(documentId: Long): List<PageEntity>

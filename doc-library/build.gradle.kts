@@ -51,4 +51,7 @@ dependencies {
 
     // Arrow (functional error handling, re-exported for consumers)
     api(libs.arrow.core)
+
+    // ML Kit Text Recognition — bundled, on-device, no Play Services needed
+    implementation(libs.mlkit.text.recognition)
 }

@@ -28,5 +28,11 @@ data class DocumentEntity(
     @ColumnInfo(name = "total_words") val totalWords: Int = 0,
     val language: String? = null,
     @ColumnInfo(name = "detected_topics_json") val detectedTopicsJson: String? = null,
-    @ColumnInfo(name = "keywords_json") val keywordsJson: String? = null
-)
+    @ColumnInfo(name = "keywords_json") val keywordsJson: String? = null,
+    @ColumnInfo(name = "embedded_chunk_count") val embeddedChunkCount: Int = 0,
+    @ColumnInfo(name = "concept_extraction_pending") val conceptExtractionPending: Boolean = false
+) {
+    /** Fraction of chunks that have a valid embedding; 0.0 if no chunks. Not stored in DB. */
+    val embeddingCoverage: Float
+        get() = if (chunkCount > 0) embeddedChunkCount.toFloat() / chunkCount else 0f
+}
